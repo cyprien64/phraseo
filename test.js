@@ -1,6 +1,6 @@
 // Auto-test de la correction : `node test.js`
 const assert = require('assert');
-const { normalize, check } = require('./match.js');
+const { normalize, check, ICAO } = require('./match.js');
 
 const exp = ["Roulons point d'arrêt piste 34 via Alpha, QNH 1013, F-GBCD"];
 assert(check("Roulons point d'arrêt piste 34 via Alpha, QNH 1013, F-GBCD", exp).pass);
@@ -21,3 +21,10 @@ for (const q of QUESTIONS.filter(q => !q.qcmOnly)) {
   q.wrong.forEach(w => assert(!check(w, q.answers).pass, 'mauvaise réponse acceptée : ' + w));
 }
 console.log(QUESTIONS.length, 'exercices vérifiés');
+
+const { radio, speakable } = require('./match.js');
+assert.strictEqual(radio('F-GBCD, départ BALSI 6P'), 'Foxtrot Golf Bravo Charlie Delta, départ BALSI 6 Papa');
+assert.strictEqual(speakable('QNH 1009, 3500 feet', 'en'), 'QNH one zero zero niner, three thousand five hundred feet');
+assert.strictEqual(speakable('Info 125,7', 'fr'), 'Info un deux cinq décimal sept');
+assert(check(radio('Roulons via Alfa, F-GBCD'), ['Roulons via Alfa, F-GBCD']).pass);
+console.log('voix OK');

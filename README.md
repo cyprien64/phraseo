@@ -5,6 +5,11 @@ Site statique d'entraînement à la phraséologie aéronautique, 3 modes :
 - **Écrit** — taper son collationnement, corrigé automatiquement (indicatif, nombres exacts, ≥ 85 % des mots) ;
 - **Oral** — parler au micro (reconnaissance vocale du navigateur : **Chrome ou Edge**), le bouton 🔊 lit le message ATC.
 
+Options : **Écoute seule** (le message ATC est masqué et lu à voix haute, comme à la radio),
+**Vol complet** (exercices dans l'ordre d'un vol : Sol → Tour → Info/Approche → atterrissage),
+thème **Alphabet OACI**. Indicatifs et lettres sont affichés et prononcés en alphabet OACI
+(Foxtrot Golf Bravo Charlie Delta), les chiffres un par un (« niner », « décimal »).
+
 ## Sources
 Phraséologie issue de : OACI Doc 9432 (Manuel de radiotéléphonie), Doc 4444 (PANS-ATM), Doc 8168,
 Règlement (UE) 923/2012 SERA Section 14 + AMC/GM, Manuel de phraséologie DGAC/DSNA.

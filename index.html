@@ -7,35 +7,53 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>✈️ Entraînement phraséo</h1>
-    <p class="muted">VFR / IFR · Français / English · QCM, écrit, oral</p>
+  <header class="top">
+    <div>
+      <h1>✈️ Phraséo</h1>
+      <p class="muted">Entraînement radio VFR / IFR · Français / English</p>
+    </div>
+    <div class="stats">
+      <span id="score" title="Bonnes réponses">0 / 0</span>
+      <span id="streak" title="Série en cours">🔥 0</span>
+    </div>
   </header>
 
   <main>
-    <section class="controls">
-      <label>Langue
-        <select id="lang"><option value="all">Toutes</option><option value="fr">Français</option><option value="en">English</option></select>
-      </label>
-      <label>Règles
-        <select id="regle"><option value="all">VFR + IFR</option><option value="vfr">VFR</option><option value="ifr">IFR</option></select>
-      </label>
-      <label>Mode
-        <select id="mode"><option value="qcm">QCM</option><option value="ecrit">Écrit</option><option value="oral">Oral (micro)</option></select>
-      </label>
-      <span id="score" class="score">0 / 0</span>
+    <section class="settings">
+      <fieldset class="seg"><legend>Langue</legend>
+        <input type="radio" name="lang" id="l-all" value="all" checked><label for="l-all">Toutes</label>
+        <input type="radio" name="lang" id="l-fr" value="fr"><label for="l-fr">FR</label>
+        <input type="radio" name="lang" id="l-en" value="en"><label for="l-en">EN</label>
+      </fieldset>
+      <fieldset class="seg"><legend>Thème</legend>
+        <input type="radio" name="regle" id="r-all" value="all" checked><label for="r-all">VFR + IFR</label>
+        <input type="radio" name="regle" id="r-vfr" value="vfr"><label for="r-vfr">VFR</label>
+        <input type="radio" name="regle" id="r-ifr" value="ifr"><label for="r-ifr">IFR</label>
+        <input type="radio" name="regle" id="r-alpha" value="alpha"><label for="r-alpha">Alphabet OACI</label>
+      </fieldset>
+      <fieldset class="seg"><legend>Mode</legend>
+        <input type="radio" name="mode" id="m-qcm" value="qcm" checked><label for="m-qcm">QCM</label>
+        <input type="radio" name="mode" id="m-ecrit" value="ecrit"><label for="m-ecrit">✍️ Écrit</label>
+        <input type="radio" name="mode" id="m-oral" value="oral"><label for="m-oral">🎤 Oral</label>
+      </fieldset>
+      <div class="toggles">
+        <label class="tog"><input type="checkbox" id="ecoute"> 🎧 Écoute seule (message masqué)</label>
+        <label class="tog"><input type="checkbox" id="chrono"> 🛫 Vol complet (ordre chronologique)</label>
+      </div>
     </section>
 
+    <div class="bar"><div id="prog"></div></div>
     <section id="card" class="card" aria-live="polite"></section>
+    <p class="muted keys">Raccourcis : <kbd>1</kbd>–<kbd>4</kbd> choisir · <kbd>Entrée</kbd> valider / suivant</p>
   </main>
 
   <footer class="muted">
-    Contenu basé sur : OACI Doc 9432, Doc 4444, Règlement (UE) 923/2012 SERA et le Manuel de phraséologie DGAC.
-    Outil d'entraînement uniquement : seuls les documents officiels en vigueur font foi.
+    Phraséologie issue de : OACI Doc 9432, Doc 4444, Annexe 10, Règlement (UE) 923/2012 SERA et Manuel de phraséologie DGAC.
+    Indicatif, organismes et fréquences fictifs. Outil d'entraînement : seuls les documents officiels en vigueur font foi.
   </footer>
 
-  <script src="data.js"></script>
   <script src="match.js"></script>
+  <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

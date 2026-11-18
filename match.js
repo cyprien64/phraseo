@@ -7,7 +7,36 @@ const LETTERS = { alfa: 'a', alpha: 'a', bravo: 'b', charlie: 'c', delta: 'd', e
   golf: 'g', hotel: 'h', india: 'i', juliett: 'j', juliet: 'j', kilo: 'k', lima: 'l', mike: 'm', november: 'n',
   oscar: 'o', papa: 'p', quebec: 'q', romeo: 'r', sierra: 's', tango: 't', uniform: 'u', victor: 'v',
   whiskey: 'w', whisky: 'w', xray: 'x', yankee: 'y', zulu: 'z' };
-const ABBR = { fl: 'flight level', ft: 'feet', kt: 'knots', kts: 'knots' };
+// Alphabet d'épellation OACI (Annexe 10, Vol. II) — orthographe officielle.
+const ICAO = { A: 'Alfa', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot', G: 'Golf', H: 'Hotel',
+  I: 'India', J: 'Juliett', K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec',
+  R: 'Romeo', S: 'Sierra', T: 'Tango', U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee', Z: 'Zulu' };
+const spell = s => [...s].map(c => ICAO[c] || c).join(' ');
+
+// Texte tel qu'il est prononcé à la radio : indicatifs et lettres isolées épelés en OACI.
+function radio(t) {
+  return t.replace(/\b([A-Z])-([A-Z]{2,4})\b/g, (_, a, b) => `${ICAO[a]} ${spell(b)}`)
+    .replace(/\b(\d+)([A-Z])\b/g, (_, n, l) => `${n} ${ICAO[l]}`);
+}
+
+// Pour la synthèse vocale : chiffres un par un (« niner »), milliers pour les altitudes, « décimal » pour les fréquences.
+const DIG = { en: 'zero one two three four five six seven eight niner'.split(' '),
+  fr: 'zéro un deux trois quatre cinq six sept huit neuf'.split(' ') };
+function speakable(t, lang) {
+  const d = DIG[lang], digits = s => [...s].map(c => d[c]).join(' ');
+  const alt = n => {
+    const th = Math.floor(n / 1000), h = Math.floor(n % 1000 / 100), w = [];
+    if (th) w.push(lang === 'en' ? `${digits(String(th))} thousand` : (th > 1 ? `${digits(String(th))} mille` : 'mille'));
+    if (h) w.push(lang === 'en' ? `${d[h]} hundred` : (h > 1 ? `${d[h]} cents` : 'cent'));
+    return w.join(' ') || digits(String(n));
+  };
+  return radio(t)
+    .replace(/(\d+)\s*(feet|pieds)/g, (_, n, u) => `${alt(+n)} ${u}`)
+    .replace(/(\d+)[.,](\d+)/g, (_, a, b) => `${digits(a)} ${lang === 'en' ? 'decimal' : 'décimal'} ${digits(b)}`)
+    .replace(/\d+/g, digits);
+}
+
+const ABBR ={ fl: 'flight level', ft: 'feet', kt: 'knots', kts: 'knots' };
 const DROP = new Set(['decimal', 'virgule', 'and', 'et', 'the', 'le', 'la', 'les', 'to', 'de', 'du', 'd', 'l']);
 
 const isNumTok = t => /^\d+$/.test(t) || t === 'H' || t === 'K';
@@ -65,9 +94,10 @@ function check(user, answers, callsign = 'fgbcd') {
   let best = null;
   for (const ans of answers) {
     const e = normalize(ans);
-    const needCs = e.includes(callsign);
-    const csOk = !needCs || u.includes(callsign);
-    const ue = u.filter(t => t !== callsign), ee = e.filter(t => t !== callsign);
+    // l'indicatif épelé peut être collé à une lettre voisine (« via Alfa, F-GBCD » -> "afgbcd")
+    const has = a => a.some(t => t.includes(callsign)), strip = a => a.map(t => t.replace(callsign, '')).filter(Boolean);
+    const csOk = !has(e) || has(u);
+    const ue = strip(u), ee = strip(e);
     const nums = a => a.filter(t => /^\d+$/.test(t)).join(',');
     const numbersOk = nums(ue) === nums(ee);
     const score = 1 - lev(ue, ee) / Math.max(ue.length, ee.length, 1);
@@ -77,4 +107,4 @@ function check(user, answers, callsign = 'fgbcd') {
   return best;
 }
 
-if (typeof module !== 'undefined') module.exports = { normalize, check };
+if (typeof module !== 'undefined') module.exports = { normalize, check, radio, speakable, ICAO };
