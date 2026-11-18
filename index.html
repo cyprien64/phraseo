@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entraînement Phraséo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>✈️ Entraînement phraséo</h1>
+    <p class="muted">VFR / IFR · Français / English · QCM, écrit, oral</p>
+  </header>
+
+  <main>
+    <section class="controls">
+      <label>Langue
+        <select id="lang"><option value="all">Toutes</option><option value="fr">Français</option><option value="en">English</option></select>
+      </label>
+      <label>Règles
+        <select id="regle"><option value="all">VFR + IFR</option><option value="vfr">VFR</option><option value="ifr">IFR</option></select>
+      </label>
+      <label>Mode
+        <select id="mode"><option value="qcm">QCM</option><option value="ecrit">Écrit</option><option value="oral">Oral (micro)</option></select>
+      </label>
+      <span id="score" class="score">0 / 0</span>
+    </section>
+
+    <section id="card" class="card" aria-live="polite"></section>
+  </main>
+
+  <footer class="muted">
+    Contenu basé sur : OACI Doc 9432, Doc 4444, Règlement (UE) 923/2012 SERA et le Manuel de phraséologie DGAC.
+    Outil d'entraînement uniquement : seuls les documents officiels en vigueur font foi.
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="match.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

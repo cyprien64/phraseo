@@ -1,0 +1,26 @@
+:root { --bg: #f4f6fa; --fg: #1a2233; --card: #fff; --muted: #667085; --accent: #1d4ed8; --ok: #15803d; --ko: #b91c1c; --line: #d0d5dd; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1420; --fg: #e6e9ef; --card: #1a2130; --muted: #98a2b3; --accent: #60a5fa; --ok: #4ade80; --ko: #f87171; --line: #344054; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+header, main, footer { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { margin: 0; font-size: 1.6rem; }
+.muted { color: var(--muted); font-size: .9rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+label { display: flex; flex-direction: column; font-size: .85rem; color: var(--muted); }
+select, textarea, button { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.score { margin-left: auto; font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-top: 16px; }
+.tag { display: inline-block; font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg); margin-right: 6px; }
+.atc { font-family: ui-monospace, monospace; background: var(--bg); padding: 12px; border-radius: 8px; border-left: 4px solid var(--accent); }
+.opts { display: grid; gap: 8px; margin: 12px 0; }
+.opts button { text-align: left; cursor: pointer; }
+.opts button:hover:not(:disabled) { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #fff; border: none; cursor: pointer; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+textarea { width: 100%; min-height: 70px; margin-top: 12px; }
+.good { border-color: var(--ok) !important; color: var(--ok); }
+.bad { border-color: var(--ko) !important; color: var(--ko); }
+.fb { margin-top: 12px; padding: 12px; border-radius: 8px; background: var(--bg); }
+.src { font-size: .8rem; color: var(--muted); }
