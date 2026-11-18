@@ -7,7 +7,11 @@ Site statique d'entraînement à la phraséologie aéronautique, 3 modes :
 
 Options : **Écoute seule** (le message ATC est masqué et lu à voix haute, comme à la radio),
 **Vol complet** (exercices dans l'ordre d'un vol : Sol → Tour → Info/Approche → atterrissage),
-thème **Alphabet OACI**. Indicatifs et lettres sont affichés et prononcés en alphabet OACI
+thème **Alphabet OACI**.
+
+Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
+**Expert** (débit de contrôleur, parasites, écoute seule imposée). La voix utilise les voix installées sur l'appareil :
+pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé). Indicatifs et lettres sont affichés et prononcés en alphabet OACI
 (Foxtrot Golf Bravo Charlie Delta), les chiffres un par un (« niner », « décimal »).
 
 ## Sources

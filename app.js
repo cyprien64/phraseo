@@ -8,7 +8,7 @@ function start() {
   const l = val('lang'), r = val('regle'), m = val('mode'), chrono = $('#chrono').checked;
   pool = QUESTIONS.filter(q =>
     (r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && (l === 'all' || q.lang === l))
-    && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || q.st));
+    && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || q.st) && (q.niv || 1) <= +val('niv'));
   if (!chrono) pool.sort(() => Math.random() - 0.5);
   idx = ok = total = streak = 0;
   stats();
@@ -22,13 +22,13 @@ function stats() {
 }
 
 function next() {
-  speechSynthesis.cancel();
+  speechSynthesis.cancel(); stopHiss();
   if (!pool.length) { $('#card').innerHTML = '<p class="ctx">Aucune question pour ces réglages.</p>'; return; }
   if (idx >= pool.length) return end();
   cur = pool[idx++];
   answered = false;
   stats();
-  const mode = val('mode'), en = cur.lang === 'en', listen = $('#ecoute').checked && cur.atc;
+  const mode = val('mode'), en = cur.lang === 'en', listen = ($('#ecoute').checked || LEVELS[val('niv')].listen) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
     <span class="prog">${idx} / ${pool.length}</span></div>
@@ -59,15 +59,62 @@ function next() {
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
 }
 
+// ── Voix du contrôleur ──
+// Niveaux : débit de parole, souffle radio (volume du bruit), écoute seule imposée.
+const LEVELS = { 1: { rate: 0.9, hiss: 0 }, 2: { rate: 1.15, hiss: 0.012 }, 3: { rate: 1.35, hiss: 0.03, listen: true } };
+const NOVELTY = /bells|bubbles|boing|cellos|whisper|zarvox|trinoids|organ|jester|superstar|bad news|good news|wobble|bahh|albert|hysterical|deranged|pipe/i;
+const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+// Meilleures voix installées d'abord ; chaque poste (Sol, Tour, Approche…) garde « son » contrôleur.
+function pickVoice(lang, st = '') {
+  const good = v => (/premium|enhanced|natural|neural|google/i.test(v.name) ? 2 : 0) + (/GB|FR/.test(v.lang) ? 1 : 0)
+    - (/eloquence|^(eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley)\b/i.test(v.voiceURI + ' ' + v.name) ? 3 : 0); // voix peu naturelles (macOS)
+  const vs = speechSynthesis.getVoices() // voix « fantaisie » macOS (Bells, Jester/Bouffon…) : noms traduits, on filtre aussi par voiceURI
+    .filter(v => v.lang.toLowerCase().startsWith(lang) && !NOVELTY.test(v.name) && !/speech\.synthesis\.voice/.test(v.voiceURI))
+    .sort((a, b) => good(b) - good(a)).filter((v, _, a) => good(v) === good(a[0])); // seulement les meilleures
+  return vs[hash(st) % (vs.length || 1)];
+}
+
+let ac, noiseBuf, hissNode;
+function audio() {
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  if (ac.state === 'suspended') ac.resume();
+  return ac;
+}
+// Bruit blanc filtré dans la bande radio VHF (300–3000 Hz) ; `secs` = durée, sinon en boucle.
+function noise(vol, secs) {
+  const c = audio(), src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  src.buffer = noiseBuf; src.loop = !secs;
+  f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.8; g.gain.value = vol;
+  src.connect(f).connect(g).connect(c.destination);
+  src.start();
+  if (secs) src.stop(c.currentTime + secs);
+  return src;
+}
+function stopHiss() { try { hissNode?.stop(); } catch {} hissNode = null; }
+
 function say() {
-  speechSynthesis.cancel();
+  speechSynthesis.cancel(); stopHiss();
+  const L = LEVELS[val('niv')], v = pickVoice(cur.lang, cur.st);
   const u = new SpeechSynthesisUtterance(speakable(cur.atc, cur.lang));
   u.lang = cur.lang === 'en' ? 'en-GB' : 'fr-FR';
-  u.rate = 1.05;
+  if (v) u.voice = v;
+  u.rate = L.rate;
+  u.pitch = 0.9 + (hash(cur.st || '') % 3) * 0.08;
   u.onstart = () => $('#led')?.classList.add('tx');
-  u.onend = () => $('#led')?.classList.remove('tx');
-  speechSynthesis.speak(u);
+  u.onend = u.onerror = () => {
+    $('#led')?.classList.remove('tx');
+    if (L.hiss) { stopHiss(); noise(L.hiss * 6, 0.12); } // squelch de fin d'émission
+  };
+  if (L.hiss) { noise(L.hiss * 6, 0.08); hissNode = noise(L.hiss); } // alternat + souffle porteuse
+  setTimeout(() => speechSynthesis.speak(u), L.hiss ? 150 : 0);
 }
+speechSynthesis.onvoiceschanged = () => {}; // force le chargement de la liste des voix (Chrome)
 
 function pick(b) {
   if (answered) return;
