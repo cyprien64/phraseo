@@ -18,11 +18,14 @@ function record(good) {
 function errCount() { $('label[for=r-err]').textContent = `❌ Mes erreurs (${QUESTIONS.filter(isErr).length})`; }
 
 // Catégories pour les statistiques
-const PHASES = [[/Sol|Ground/, 'Roulage'], [/Prévol|Delivery/, 'Clairance IFR'], [/Tour|Tower/, 'Tour (décollage, circuit, atterrissage)'],
-  [/Approche|Approach|Contrôle|Control/, 'Approche / en route']];
+// (la phase se déduit du message : sur un petit terrain, c'est la Tour qui gère aussi le roulage)
+const PHASES = [[/Prévol|Delivery|mise en route|start-up/i, 'Clairance IFR'],
+  [/roul|taxi|maintenez avant|hold short|consignes de roulage/i, 'Roulage'],
+  [/décoll|take-off|align|line up|atterri|land|vent arrière|downwind|base|remettez|go around|transpondeur|squawk|Info/i, 'Tour (décollage, circuit, atterrissage)'],
+  [/./, 'Approche / en route']];
 const cats = q => q.regle === 'alpha' ? [['Thème', 'Alphabet OACI']] : [
   ['Langue', q.lang === 'en' ? 'Anglais' : 'Français'], ['Règles', q.regle.toUpperCase()],
-  ['Phase', (PHASES.find(([r]) => r.test(q.st || '')) || [0, 'Urgences & théorie'])[1]]];
+  ['Phase', q.st ? PHASES.find(([r]) => r.test(`${q.st} ${q.atc} ${q.answers[0]}`))[1] : 'Urgences & théorie']];
 
 function showStats() {
   const g = {};

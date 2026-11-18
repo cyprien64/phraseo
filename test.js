@@ -2,11 +2,12 @@
 const assert = require('assert');
 const { normalize, check, ICAO } = require('./match.js');
 
-const exp = ["Roulons point d'arrêt piste 34 via Alpha, QNH 1013, F-GBCD"];
-assert(check("Roulons point d'arrêt piste 34 via Alpha, QNH 1013, F-GBCD", exp).pass);
-assert(check("Fox Golf Bravo Charlie Delta roulons point d'arret piste trois quatre via alpha QNH un zéro un trois", exp).pass);
-assert(!check("Roulons point d'arrêt piste 34 via Alpha, QNH 1012, F-GBCD", exp).pass, 'mauvais QNH');
-assert(!check("Roulons point d'arrêt piste 34 via Alpha, QNH 1013", exp).pass, 'indicatif manquant');
+const exp = ["Descending altitude 3000 feet QNH 1013, F-GBCD"];
+assert(check("Descending altitude 3000 feet QNH 1013, F-GBCD", exp).pass);
+assert(check("Foxtrot Golf Bravo Charlie Delta descending altitude three thousand feet QNH one zero one three", exp).pass);
+assert(!check("Descending altitude 3000 feet QNH 1012, F-GBCD", exp).pass, 'mauvais QNH');
+assert(!check("Descending altitude 3000 feet QNH 1013", exp).pass, 'indicatif manquant');
+assert(check("Je roule point d'attente piste deux quatre via alpha F-GBCD", ["Je roule point d'attente piste 24 via Alfa, F-GBCD"]).pass);
 assert(!check("Reçu F-GBCD", exp).pass);
 assert.deepStrictEqual(normalize('three thousand five hundred feet'), ['3500', 'feet']);
 assert.deepStrictEqual(normalize('FL100'), normalize('flight level one zero zero'));
@@ -24,14 +25,18 @@ console.log(QUESTIONS.length, 'exercices vérifiés');
 
 const { radio, speakable } = require('./match.js');
 assert.strictEqual(radio('F-GBCD, départ BALSI 6P'), 'Foxtrot Golf Bravo Charlie Delta, départ BALSI 6 Papa');
+// exemples du Manuel DSNA p. 15-16
 assert.strictEqual(speakable('QNH 1009, 3500 feet', 'en'), 'QNH one zero zero niner, three thousand five hundred feet');
-assert.strictEqual(speakable('Info 125,7', 'fr'), 'Info un deux cinq décimal sept');
+assert.strictEqual(speakable('level 100, level 80, squawk 2000, QNH 1000', 'en'), 'level one hundred, level eight zero, squawk two thousand, QNH one thousand');
+assert.strictEqual(speakable('Tower 118.100, Approach 118.050', 'en'), 'Tower one one eight decimal one, Approach one one eight decimal zero five zero');
+assert.strictEqual(speakable('speed 200 knots, speed 250 knots', 'en'), 'speed two hundred knots, speed two five zero knots');
+assert.strictEqual(speakable('Info 125,7', 'fr'), 'Info 125 décimale 7');
 assert(check(radio('Roulons via Alfa, F-GBCD'), ['Roulons via Alfa, F-GBCD']).pass);
 console.log('voix OK');
 
 const { diffWords } = require('./match.js');
-const ref = "Roulons point d'arrêt Alfa 1 piste 34 via Alfa, QNH 1013, F-GBCD";
-assert.deepStrictEqual(diffWords("Roulons point d'arrêt Alfa 1 piste 43 via Alfa, F-GBCD", ref).notes, ['piste 34 → 43', 'QNH 1013 oublié']);
-assert.deepStrictEqual(diffWords("roulons point d'arret alpha un piste 34 via alpha QNH 1013", ref).notes, ['indicatif oublié']);
+const ref = "Je descends altitude 3000 pieds QNH 1009, piste 32, F-GBCD";
+assert.deepStrictEqual(diffWords("Je descends altitude 3000 pieds, piste 23, F-GBCD", ref).notes, ['QNH 1009 oublié', 'piste 32 → 23']);
+assert.deepStrictEqual(diffWords("je descends altitude 3000 pieds QNH 1009 piste 32", ref).notes, ['indicatif oublié']);
 assert.deepStrictEqual(diffWords(ref, ref).notes, []);
 console.log('diff OK');

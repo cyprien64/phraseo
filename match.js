@@ -7,7 +7,7 @@ const LETTERS = { alfa: 'a', alpha: 'a', bravo: 'b', charlie: 'c', delta: 'd', e
   golf: 'g', hotel: 'h', india: 'i', juliett: 'j', juliet: 'j', kilo: 'k', lima: 'l', mike: 'm', november: 'n',
   oscar: 'o', papa: 'p', quebec: 'q', romeo: 'r', sierra: 's', tango: 't', uniform: 'u', victor: 'v',
   whiskey: 'w', whisky: 'w', xray: 'x', yankee: 'y', zulu: 'z' };
-// Alphabet d'épellation OACI (Annexe 10, Vol. II) — orthographe officielle.
+// Alphabet d'épellation radiotéléphonique — SERA.14020, tableau S14-2.
 const ICAO = { A: 'Alfa', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot', G: 'Golf', H: 'Hotel',
   I: 'India', J: 'Juliett', K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec',
   R: 'Romeo', S: 'Sierra', T: 'Tango', U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee', Z: 'Zulu' };
@@ -19,20 +19,25 @@ function radio(t) {
     .replace(/\b(\d+)([A-Z])\b/g, (_, n, l) => `${n} ${ICAO[l]}`);
 }
 
-// Pour la synthèse vocale : chiffres un par un (« niner »), milliers pour les altitudes, « décimal » pour les fréquences.
-const DIG = { en: 'zero one two three four five six seven eight niner'.split(' '),
-  fr: 'zéro un deux trois quatre cinq six sept huit neuf'.split(' ') };
+// Pour la synthèse vocale, selon le Manuel de phraséologie DSNA (10e éd.) p. 13-17 :
+// - en français, les nombres peuvent se dire comme dans la vie courante ; « décimale » dans les fréquences ;
+// - en anglais, chiffre par chiffre (« niner », SERA tableau S14-3), sauf centaines/milliers entiers
+//   (« level one hundred », « squawk two thousand », « Q_N_H one thousand », « three thousand five hundred feet »)
+//   et fréquences : les 5e et 6e chiffres ne sont pas énoncés s'ils sont nuls (118.100 = « decimal one »).
+const DIG = 'zero one two three four five six seven eight niner'.split(' ');
 function speakable(t, lang) {
-  const d = DIG[lang], digits = s => [...s].map(c => d[c]).join(' ');
-  const alt = n => {
-    const th = Math.floor(n / 1000), h = Math.floor(n % 1000 / 100), w = [];
-    if (th) w.push(lang === 'en' ? `${digits(String(th))} thousand` : (th > 1 ? `${digits(String(th))} mille` : 'mille'));
-    if (h) w.push(lang === 'en' ? `${d[h]} hundred` : (h > 1 ? `${d[h]} cents` : 'cent'));
-    return w.join(' ') || digits(String(n));
+  t = radio(t);
+  if (lang === 'fr') return t.replace(/(\d+),(\d+)/g, '$1 décimale $2');
+  const digits = s => [...String(s)].map(c => DIG[c]).join(' ');
+  const round = n => { // multiples entiers de cent / mille ; sinon chiffre par chiffre
+    if (n % 100) return digits(n);
+    const th = Math.floor(n / 1000), h = n % 1000 / 100;
+    return [th ? `${digits(th)} thousand` : '', h ? `${DIG[h]} hundred` : ''].filter(Boolean).join(' ');
   };
-  return radio(t)
-    .replace(/(\d+)\s*(feet|pieds)/g, (_, n, u) => `${alt(+n)} ${u}`)
-    .replace(/(\d+)[.,](\d+)/g, (_, a, b) => `${digits(a)} ${lang === 'en' ? 'decimal' : 'décimal'} ${digits(b)}`)
+  return t
+    .replace(/(\d+)\s*feet/g, (_, n) => `${round(+n)} feet`)
+    .replace(/\b(level|speed|squawk|QNH) (\d+)/g, (_, w, n) => `${w} ${+n % 100 ? digits(n) : round(+n)}`)
+    .replace(/(\d+)\.(\d+)/g, (_, a, b) => `${digits(a)} decimal ${digits(b.length === 3 && b.endsWith('00') ? b[0] : b)}`)
     .replace(/\d+/g, digits);
 }
 
@@ -98,7 +103,9 @@ function check(user, answers, callsign = 'fgbcd') {
     const has = a => a.some(t => t.includes(callsign)), strip = a => a.map(t => t.replace(callsign, '')).filter(Boolean);
     const csOk = !has(e) || has(u);
     const ue = strip(u), ee = strip(e);
-    const nums = a => a.filter(t => /^\d+$/.test(t)).join(',');
+    // nombres, sens de virage et branches du circuit : la moindre erreur rend la réponse fausse
+    const nums = a => a.filter(t => /^\d+$/.test(t)
+      || /^(gauche|droite|left|right|base|arriere|downwind|final|finale|traversier|crosswind)$/.test(t)).join(',');
     const numbersOk = nums(ue) === nums(ee);
     const score = 1 - lev(ue, ee) / Math.max(ue.length, ee.length, 1);
     const r = { pass: csOk && numbersOk && score >= 0.85, score, numbersOk, csOk, ans };
