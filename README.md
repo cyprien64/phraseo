@@ -13,8 +13,13 @@ thème **Alphabet OACI**.
 
 Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
 **Expert** (débit de contrôleur, parasites, écoute seule imposée). La voix utilise les voix installées sur l'appareil :
-pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé). Indicatifs et lettres sont affichés et prononcés en alphabet OACI
-(Foxtrot Golf Bravo Charlie Delta), les chiffres un par un (« niner », « décimal »).
+pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé).
+Les indicatifs sont écrits en lettres (F-GBCD) et prononcés en alphabet OACI (Foxtrot Golf Bravo Charlie Delta),
+les chiffres un par un (« niner », « décimal »).
+
+Suivi : les questions ratées reviennent plus souvent et sont regroupées dans **❌ Mes erreurs** ; la correction
+écrite/orale montre mot à mot ce qui manque ou est faux (« piste 34 → 43 », « QNH 1013 oublié ») ; **📊 Stats** donne
+le taux de réussite par langue, règles et phase de vol. La progression reste enregistrée dans le navigateur de l'appareil.
 
 ## Sources
 Phraséologie issue de : OACI Doc 9432 (Manuel de radiotéléphonie), Doc 4444 (PANS-ATM), Doc 8168,
