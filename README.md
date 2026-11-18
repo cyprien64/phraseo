@@ -1,5 +1,7 @@
 # Entraînement phraséo (VFR / IFR · FR / EN)
 
+👉 **Accéder au site : https://cyprien64.github.io/phraseo/**
+
 Site statique d'entraînement à la phraséologie aéronautique, 3 modes :
 - **QCM** — choisir le bon collationnement / la bonne réponse ;
 - **Écrit** — taper son collationnement, corrigé automatiquement (indicatif, nombres exacts, ≥ 85 % des mots) ;
