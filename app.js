@@ -4,12 +4,52 @@ const val = n => $(`input[name=${n}]:checked`).value;
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let pool = [], idx = 0, cur, ok = 0, total = 0, streak = 0, answered = false;
 
+// ── Progression enregistrée sur l'appareil : { id: [réussites, échecs, dernière réponse juste 0/1] } ──
+const KEY = 'phraseo-progress-v1';
+let prog = {};
+try { prog = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prog)); } catch {} };
+const isErr = q => prog[q.id]?.[2] === 0;
+function record(good) {
+  const p = prog[cur.id] || (prog[cur.id] = [0, 0, 0]);
+  p[good ? 0 : 1]++; p[2] = good ? 1 : 0;
+  save(); errCount();
+}
+function errCount() { $('label[for=r-err]').textContent = `❌ Mes erreurs (${QUESTIONS.filter(isErr).length})`; }
+
+// Catégories pour les statistiques
+const PHASES = [[/Sol|Ground/, 'Roulage'], [/Prévol|Delivery/, 'Clairance IFR'], [/Tour|Tower/, 'Tour (décollage, circuit, atterrissage)'],
+  [/Approche|Approach|Contrôle|Control/, 'Approche / en route']];
+const cats = q => q.regle === 'alpha' ? [['Thème', 'Alphabet OACI']] : [
+  ['Langue', q.lang === 'en' ? 'Anglais' : 'Français'], ['Règles', q.regle.toUpperCase()],
+  ['Phase', (PHASES.find(([r]) => r.test(q.st || '')) || [0, 'Urgences & théorie'])[1]]];
+
+function showStats() {
+  const g = {};
+  for (const q of QUESTIONS) for (const [grp, c] of cats(q)) {
+    const t = ((g[grp] ||= {})[c] ||= [0, 0]), p = prog[q.id];
+    if (p) { t[0] += p[0]; t[1] += p[1]; }
+  }
+  const color = pct => pct == null ? 'transparent' : pct >= 80 ? 'var(--ok)' : pct >= 50 ? '#d97706' : 'var(--ko)';
+  const rows = Object.entries(g).map(([grp, cs]) => `<tr><th colspan="3">${grp}</th></tr>` + Object.entries(cs).map(([c, [o, k]]) => {
+    const n = o + k, pct = n ? Math.round(100 * o / n) : null;
+    return `<tr><td>${esc(c)}</td><td><div class="meter"><div style="width:${pct ?? 0}%;background:${color(pct)}"></div></div></td>
+      <td class="num">${pct == null ? '—' : pct + ' %'} <span class="muted">(${n})</span></td></tr>`;
+  }).join('')).join('');
+  $('#statsBody').innerHTML = `<table>${rows}</table>`;
+  $('#stats').showModal();
+}
+
 function start() {
   const l = val('lang'), r = val('regle'), m = val('mode'), chrono = $('#chrono').checked;
   pool = QUESTIONS.filter(q =>
-    (r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && (l === 'all' || q.lang === l))
-    && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || q.st) && (q.niv || 1) <= +val('niv'));
-  if (!chrono) pool.sort(() => Math.random() - 0.5);
+    (r === 'err' ? isErr(q) && (l === 'all' || q.regle === 'alpha' || q.lang === l)
+      : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && (l === 'all' || q.lang === l))
+    && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
+  if (!chrono) {
+    if (r !== 'err') pool = pool.concat(pool.filter(isErr)); // les questions ratées reviennent deux fois plus souvent
+    pool.sort(() => Math.random() - 0.5);
+  }
   idx = ok = total = streak = 0;
   stats();
   next();
@@ -32,15 +72,15 @@ function next() {
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
     <span class="prog">${idx} / ${pool.length}</span></div>
-    <div class="tags"><span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}</div>
+    <div class="tags"><span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">ATC</div>
-    <p class="msg ${listen ? 'hidden' : ''}" id="atc">${esc(radio(cur.atc))}</p>
+    <p class="msg ${listen ? 'hidden' : ''}" id="atc">${esc(cur.atc)}</p>
     <button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button></div>`;
   h += `<p class="q">${esc(q)}</p>`;
   if (mode === 'qcm') {
     const opts = [cur.answers[0], ...cur.wrong].sort(() => Math.random() - 0.5);
-    h += `<div class="opts">${opts.map((o, i) => `<button data-o="${esc(o)}"><span class="n">${i + 1}</span><span>${esc(radio(o))}</span></button>`).join('')}</div>`;
+    h += `<div class="opts">${opts.map((o, i) => `<button data-o="${esc(o)}"><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`).join('')}</div>`;
   } else if (mode === 'ecrit') {
     h += `<textarea id="txt" placeholder="${en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
       <div class="row"><button class="primary" id="go">Valider</button></div>`;
@@ -138,26 +178,27 @@ function grade(text) {
   if (answered || !text.trim()) return;
   if (cur.regle === 'alpha') {
     const w = s => s.toLowerCase().replace(/[^a-z]/g, '');
-    return feedback(cur.answers.some(a => w(a) === w(text)), '', text);
+    return feedback(cur.answers.some(a => w(a) === w(text)), { said: text });
   }
-  const r = check(text, cur.answers), why = [];
-  if (!r.csOk) why.push('indicatif manquant');
-  if (!r.numbersOk) why.push('nombres incorrects ou manquants');
-  why.push(`${Math.round(r.score * 100)} % des mots corrects`);
-  feedback(r.pass, why.join(' · '), text);
+  const r = check(text, cur.answers);
+  feedback(r.pass, { said: text, diff: diffWords(text, r.ans), ans: r.ans });
 }
 
-function feedback(good, detail = '', said = '') {
+const paint = (cs, cls) => cs.map(c => c.bad ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text)).join(' ');
+
+function feedback(good, { said = '', diff, ans = cur.answers[0] } = {}) {
   answered = true;
+  record(good);
   total++; if (good) { ok++; streak++; } else streak = 0;
   stats();
   $('#atc')?.classList.remove('hidden');
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
   $('#fb').innerHTML = `<div class="fb ${good ? 'ok' : 'ko'}">
-    <p><strong>${good ? '✅ Correct' : '❌ À revoir'}</strong> ${esc(detail)}</p>
-    ${said ? `<p>Votre réponse : <em>${esc(said)}</em></p>` : ''}
-    <p>Réponse attendue : <strong>${esc(radio(cur.answers[0]))}</strong></p>
+    <p><strong>${good ? '✅ Correct' : '❌ À revoir'}</strong></p>
+    ${diff?.notes.length ? `<ul class="notes">${diff.notes.slice(0, 5).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    ${said ? `<p>Votre réponse : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
+    <p>Réponse attendue : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>
     <p class="src">📘 Source : ${esc(cur.src)}</p>
     <div class="row"><button class="primary" id="nx">Suivant →</button></div></div>`;
   $('#nx').addEventListener('click', next);
@@ -183,4 +224,11 @@ document.addEventListener('keydown', e => {
 });
 
 $$('.settings input').forEach(i => i.addEventListener('change', start));
+$('#statsBtn').addEventListener('click', showStats);
+$('#reset').addEventListener('click', () => {
+  if (!confirm('Effacer toute votre progression enregistrée sur cet appareil ?')) return;
+  prog = {}; save(); errCount(); $('#stats').close(); start();
+});
+QUESTIONS.forEach(q => { q.id = hash([q.lang, q.regle, q.atc, q.q, q.ctx].join('|')).toString(36); });
+errCount();
 start();

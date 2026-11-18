@@ -82,3 +82,20 @@ kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4p
 footer.muted { font-size: .8rem; margin: 0 auto; }
 .radio strong, .radio .prog { white-space: nowrap; }
 @media (max-width: 520px) { .keys { display: none; } h1 { font-size: 1.4rem; } .radio { padding: 10px 14px; font-size: .85rem; } .radio strong { font-size: .95rem; } }
+
+/* Révision, correction, statistiques */
+.stats button { border-radius: 99px; padding: 6px 12px; font-weight: 700; }
+.tag.err { background: var(--ko-soft); color: var(--ko); }
+.notes { margin: 6px 0; padding-left: 20px; font-weight: 600; color: var(--ko); }
+.miss { color: var(--ko); background: var(--ko-soft); border-radius: 4px; padding: 0 3px; text-decoration: underline wavy; }
+.extra { color: var(--ko); text-decoration: line-through; }
+dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--fg); width: min(560px, calc(100% - 32px)); padding: 20px; }
+dialog::backdrop { background: rgba(0, 0, 0, .5); }
+dialog h2 { margin: 0 0 4px; }
+dialog table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+dialog th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 12px 0 4px; }
+dialog td { padding: 4px 6px 4px 0; font-size: .9rem; }
+dialog td.num { text-align: right; white-space: nowrap; }
+.meter { width: 120px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.meter div { height: 100%; }
+@media (max-width: 520px) { .meter { width: 60px; } .stats { flex-wrap: wrap; justify-content: flex-end; } }

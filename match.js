@@ -101,10 +101,68 @@ function check(user, answers, callsign = 'fgbcd') {
     const nums = a => a.filter(t => /^\d+$/.test(t)).join(',');
     const numbersOk = nums(ue) === nums(ee);
     const score = 1 - lev(ue, ee) / Math.max(ue.length, ee.length, 1);
-    const r = { pass: csOk && numbersOk && score >= 0.85, score, numbersOk, csOk };
+    const r = { pass: csOk && numbersOk && score >= 0.85, score, numbersOk, csOk, ans };
     if (!best || r.pass > best.pass || (r.pass === best.pass && r.score > best.score)) best = r;
   }
   return best;
 }
 
-if (typeof module !== 'undefined') module.exports = { normalize, check, radio, speakable, ICAO };
+// Découpe en mots affichables ; les lettres/chiffres épelés un par un sont regroupés
+// (« Foxtrot Golf Bravo Charlie Delta » = F-GBCD, « un zéro un trois » = 1013).
+function chunks(s) {
+  const out = [];
+  for (const w of s.split(/\s+/).filter(Boolean)) {
+    const key = normalize(w).join(''), last = out[out.length - 1];
+    if (key.length === 1 && last?.single) { last.text += ' ' + w; last.key += key; }
+    else out.push({ text: w, key, single: key.length === 1 });
+  }
+  return out;
+}
+
+// Correction mot à mot : marque `bad` sur les mots manquants/faux/en trop et produit des remarques lisibles.
+function diffWords(user, expected, callsign = 'fgbcd') {
+  const E = chunks(expected), Uall = chunks(user), U = Uall.filter(c => c.key);
+  const n = E.length, m = U.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = !E[i].key ? dp[i + 1][j] : E[i].key === U[j].key ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ops = [];
+  for (let i = 0, j = 0; i < n || j < m;) {
+    if (i < n && !E[i].key) ops.push({ t: '=', e: E[i++] });
+    else if (i < n && j < m && E[i].key === U[j].key) ops.push({ t: '=', e: E[i++], u: U[j++] });
+    else if (j < m && (i === n || dp[i][j + 1] >= dp[i + 1][j])) ops.push({ t: '+', u: U[j++] });
+    else ops.push({ t: '-', e: E[i++] });
+  }
+  // un manquant suivi/précédé d'un en-trop au même endroit = une substitution (« 34 → 43 »)
+  const out = [];
+  for (let k = 0; k < ops.length;) {
+    if (ops[k].t === '=') { out.push(ops[k++]); continue; }
+    const minus = [], plus = [];
+    while (k < ops.length && ops[k].t !== '=') (ops[k].t === '-' ? minus : plus).push(ops[k++]);
+    const p = Math.min(minus.length, plus.length);
+    for (let x = 0; x < p; x++) out.push({ t: '~', e: minus[x].e, u: plus[x].u });
+    out.push(...minus.slice(p), ...plus.slice(p));
+  }
+  const clean = s => s.replace(/[,.;:!?]+$/, ''), notes = [];
+  let prev = '', missing = [];
+  const flush = () => { if (missing.length) notes.push(`${missing.join(' ')} oublié`); missing = []; };
+  for (const o of out) {
+    if (o.e && o.t !== '=') o.e.bad = true;
+    if (o.u && o.t !== '=') o.u.bad = true;
+    const label = o.e && /^\d+$/.test(o.e.key) && prev ? prev + ' ' : '';
+    if (o.t === '-') {
+      if (o.e.key.includes(callsign)) { flush(); notes.push('indicatif oublié'); }
+      else missing.push(missing.length ? clean(o.e.text) : label + clean(o.e.text));
+    } else {
+      flush();
+      if (o.t === '~') notes.push(`${label}${clean(o.e.text)} → ${clean(o.u.text)}`);
+      if (o.t === '+') notes.push(`« ${clean(o.u.text)} » en trop`);
+    }
+    if (o.e) prev = clean(o.e.text);
+  }
+  flush();
+  return { E, U: Uall, notes };
+}
+
+if (typeof module !== 'undefined') module.exports = { normalize, check, radio, speakable, ICAO, diffWords };

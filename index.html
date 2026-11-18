@@ -15,8 +15,19 @@
     <div class="stats">
       <span id="score" title="Bonnes réponses">0 / 0</span>
       <span id="streak" title="Série en cours">🔥 0</span>
+      <button id="statsBtn" title="Statistiques">📊 Stats</button>
     </div>
   </header>
+
+  <dialog id="stats">
+    <h2>📊 Mes statistiques</h2>
+    <p class="muted">Taux de réussite par catégorie (nombre de réponses entre parenthèses). Enregistré sur cet appareil.</p>
+    <div id="statsBody"></div>
+    <div class="row">
+      <button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button id="reset">Réinitialiser</button>
+    </div>
+  </dialog>
 
   <main>
     <section class="settings">
@@ -30,6 +41,7 @@
         <input type="radio" name="regle" id="r-vfr" value="vfr"><label for="r-vfr">VFR</label>
         <input type="radio" name="regle" id="r-ifr" value="ifr"><label for="r-ifr">IFR</label>
         <input type="radio" name="regle" id="r-alpha" value="alpha"><label for="r-alpha">Alphabet OACI</label>
+        <input type="radio" name="regle" id="r-err" value="err"><label for="r-err">❌ Mes erreurs</label>
       </fieldset>
       <fieldset class="seg"><legend>Mode</legend>
         <input type="radio" name="mode" id="m-qcm" value="qcm" checked><label for="m-qcm">QCM</label>

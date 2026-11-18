@@ -28,3 +28,10 @@ assert.strictEqual(speakable('QNH 1009, 3500 feet', 'en'), 'QNH one zero zero ni
 assert.strictEqual(speakable('Info 125,7', 'fr'), 'Info un deux cinq décimal sept');
 assert(check(radio('Roulons via Alfa, F-GBCD'), ['Roulons via Alfa, F-GBCD']).pass);
 console.log('voix OK');
+
+const { diffWords } = require('./match.js');
+const ref = "Roulons point d'arrêt Alfa 1 piste 34 via Alfa, QNH 1013, F-GBCD";
+assert.deepStrictEqual(diffWords("Roulons point d'arrêt Alfa 1 piste 43 via Alfa, F-GBCD", ref).notes, ['piste 34 → 43', 'QNH 1013 oublié']);
+assert.deepStrictEqual(diffWords("roulons point d'arret alpha un piste 34 via alpha QNH 1013", ref).notes, ['indicatif oublié']);
+assert.deepStrictEqual(diffWords(ref, ref).notes, []);
+console.log('diff OK');
