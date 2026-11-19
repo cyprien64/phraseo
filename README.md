@@ -36,8 +36,10 @@ Réalisme :
   faux, le contrôleur répond « Négatif je répète » suivi de la clairance correcte (SERA.14075 d)).
 - **🎲 Valeurs aléatoires** : un indicatif par série (affiché dans le bandeau radio), une piste et des codes
   transpondeur tirés au hasard et gardés pendant toute la série ; le vent tourne avec la piste.
-- **Indicatif abrégé** (F-CD) : utilisé par le contrôleur après le premier échange en « Vol complet », de temps en
-  temps sinon (Manuel p. 18, SERA.14055). Les deux formes sont acceptées en réponse.
+- **🔤 Indicatif abrégé dans mes réponses** (activé par défaut) : dès le 2e message de la série, le contrôleur abrège
+  votre indicatif (F-GBCD → F-CD) et la réponse attendue l'utilise aussi. Le premier échange reste complet : le pilote
+  n'abrège qu'après le contrôleur (Manuel p. 18, SERA.14055). Sans l'option : abrégé en « Vol complet » après le premier
+  échange, de temps en temps sinon. Les deux formes sont acceptées en écrit et à l'oral.
 - **📻 Fréquence encombrée** : certains messages sont pour un autre avion, parfois à l'indicatif très proche
   (Manuel p. 24) — il faut cliquer « Pas pour moi ».
 - **✂️ Coupures radio** : la fin du message est couverte par le bruit ; il faut demander « Répétez tout après… »

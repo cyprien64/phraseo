@@ -139,7 +139,11 @@ function prepare(q) {
   if (q.regle === 'alpha' || q.prepared) return q;
   const en = q.lang === 'en', chrono = $('#chrono').checked;
   // indicatif abrégé : seulement après un premier échange et à l'initiative du contrôleur (Manuel p. 18)
-  const short = !session && !!q.atc && q.cat !== 'atis' && q.cat !== 'nav' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
+  // option « Indicatif abrégé » : après un premier échange complet avec le contrôleur, il abrège et vous répondez
+  // avec F-CD (permis seulement une fois que le contrôleur l'a fait : Manuel p. 18, SERA.14055)
+  const short = !!q.atc && q.cat !== 'atis' && !q.elements && !!q.st && ($('#abbr').checked ? !!memo.contact
+    : !session && q.cat !== 'nav' && (chrono ? idx > 1 : Math.random() < 0.3));
+  if (q.atc && q.st && q.cat !== 'atis') memo.contact = true;
   const shown = short ? abbrev(series) : series;
   let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
   if (terrain) c = realTerrain(c, terrain, wx);
@@ -471,7 +475,7 @@ function transmitChoice(text, good) {
   if (session?.type === 'exam' || !cur.atc || cur.q) return;
   const en = cur.lang === 'en', me = { text, lang: cur.lang, st: cur.st, pilot: true, cs: series };
   const lines = [me], bubble = (cls, who, t) => `<div class="bubble ${cls}"><div class="who">${esc(who)}</div><p class="msg">${esc(t)}</p></div>`;
-  let h = bubble('pilot', en ? `You (${series})` : `Vous (${series})`, text);
+  let h = bubble('pilot', en ? `You (${cur.shown})` : `Vous (${cur.shown})`, text);
   if (!good && !cur.notMine && !cur.cut && !cur.dictee) {
     const atc = `${cur.shown}, ${en ? 'negative I say again' : 'négatif je répète'}, ${cur.atc.replace(/^[^,]+,\s*/, '')}`;
     lines.push({ text: atc, lang: cur.lang, st: cur.st });
