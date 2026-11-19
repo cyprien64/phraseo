@@ -17,7 +17,7 @@ assert(check('Approach one one niner decimal two five, F-GBCD', ['Approach 119.2
 
 // Chaque réponse de référence doit passer, chaque mauvaise réponse du QCM doit échouer.
 const fs = require('fs');
-const QUESTIONS = eval(['data.js', 'data-plus.js'].map(f => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n') + ';QUESTIONS');
+const QUESTIONS = eval(['data.js', 'data-plus.js', 'data-lot2.js'].map(f => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n') + ';QUESTIONS');
 for (const q of QUESTIONS.filter(q => !q.qcmOnly)) {
   q.answers.forEach(a => assert(check(a, q.answers).pass, 'référence refusée : ' + a));
   q.wrong.forEach(w => assert(!check(w, q.answers).pass, 'mauvaise réponse acceptée : ' + w));
@@ -76,7 +76,7 @@ assert(!/piste 24|runway 24/.test(R.vary(QUESTIONS.find(q => q.ctx === 'En final
 { const w = R.vary(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.'), { cs: 'F-GXYZ', memo: { rw24: '13' } }); assert.strictEqual(w.atc, 'F-GXYZ, piste 13, autorisé décollage, vent 150 degrés 8 nœuds.'); console.log('vent OK'); }
 
 // ── Apprentissage ──
-global.MANUEL = p => `Manuel p. ${p}`; global.SERA = a => `SERA ${a}`;
+global.MANUEL = p => `Manuel p. ${p}`; global.SERA = a => `SERA ${a}`; global.AFIS = p => `AFIS p. ${p}`;
 const L = require('./learn.js');
 let p = L.leitner(undefined, true, 0); assert.deepStrictEqual(p, [1, 0, 1, 1, L.DAY]);
 p = L.leitner(p, true, 0); assert.strictEqual(p[3], 2); assert.strictEqual(p[4], 3 * L.DAY);

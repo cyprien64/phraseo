@@ -17,9 +17,14 @@ function leitner(p, good, now = Date.now()) {
 const isDueP = (p, now = Date.now()) => !!p && (p[4] || 0) <= now; // anciennes progressions sans échéance : à revoir
 
 // « Pourquoi ? » : règles qui s'appliquent à l'exercice, avec leur source. `fiche` = fiche de cours liée.
-const FICHE_CAT = { urgence: 'urgence', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre' };
+const FICHE_CAT = { urgence: 'urgence', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre', afis: 'afis', phases: 'collat' };
 function whyRules(q) {
   const out = [], txt = `${q.atc} ${q.answers[0]}`, add = (texte, src) => out.push({ texte, src });
+  if (q.cat === 'afis') { // l'AFIS informe, il ne délivre pas de clairance
+    if (q.atc && !q.q) add('En AFIS, l’agent donne des informations et non des clairances : on accuse réception (« Roger »), on annonce ses intentions et on collationne au minimum la piste, la visibilité et le calage altimétrique.', AFIS(28));
+    add('Source de l’exercice : voir ci-dessous.', q.src);
+    return { regles: out, fiche: 'afis' };
+  }
   if (q.regle === 'alpha') add('L’alphabet d’épellation officiel est celui du tableau S14-2 (Alfa, Juliett, Whiskey, X-ray…).', SERA('SERA.14020'));
   if (q.cat === 'signaux') add('Chaque signal lumineux a une signification différente en vol et au sol.', SERA('appendice 1, tableau AP 1-1'));
   if (q.cat === 'expr') add('Les expressions conventionnelles ont un sens défini, identique pour tous les pilotes et contrôleurs.', SERA('SERA.14045, tableau S14-4'));

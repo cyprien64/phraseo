@@ -15,7 +15,8 @@ Sujets (filtre « Sujet ») : exercices de base, situations au sol (traversée d
 alignement conditionnel, annulation de décollage), information de trafic, transit VFR et VFR spécial,
 IFR avancé (STAR, attente, approche à vue, approche interrompue ou annulée, contraintes de niveau), ATIS,
 urgences et pannes (MAYDAY, PAN PAN, panne d'émission, carburant minimal), expressions conventionnelles,
-signaux lumineux, premier appel libre / essai radio / répétitions. Les exercices à plusieurs éléments
+signaux lumineux, premier appel libre / essai radio / répétitions, **AFIS et auto-information**, **phases particulières**
+(repoussage, CTOT, RVSM, faible visibilité, clôture du plan de vol, voltige, largage de parachutistes, péril aviaire). Les exercices à plusieurs éléments
 n'apparaissent qu'aux niveaux Confirmé et Expert.
 
 Réalisme :
@@ -76,7 +77,13 @@ Chaque exercice a été vérifié et indique la page ou l'article exact :
   SERA.8015 e) (collationnement), SERA.13005 (codes 7500/7600/7700), SERA.14020 (alphabet), SERA.14035 (nombres),
   SERA.14045 (expressions conventionnelles), SERA.14055 (indicatifs abrégés), SERA.14095 (détresse et urgence).
 
-Le Doc 9432 de l'OACI (payant) n'a pas été utilisé. Indicatif, aérodromes, fréquences et points de report sont fictifs.
+- Pour l'AFIS : **Manuel de phraséologie AFIS** de l'UAF & FA (mai 2019), document d'information élaboré avec l'aide
+  de la DGAC, **sans valeur juridique** (il le précise lui-même).
+- Pour l'auto-information : **arrêté du 12 juillet 2019** (procédures de circulation aérienne pour l'utilisation des
+  aérodromes, JORF du 2 août 2019) et **AIP France ENR 1.2** (cycle du 29 octobre 2026). Aucun texte officiel ne fixe
+  la formulation exacte des messages d'auto-information : le site interroge donc sur les règles, pas sur des phrases.
+
+Le Doc 9432 de l'OACI (payant) n'a pas été utilisé. Édition du manuel DSNA vérifiée le 19/11/2026 : la 10e reste la plus récente. Indicatif, aérodromes, fréquences et points de report sont fictifs.
 **Outil d'entraînement : seuls les documents officiels en vigueur font foi.** Vérifier qu'une édition plus récente
 du manuel n'est pas parue (site du SIA ou du ministère).
 

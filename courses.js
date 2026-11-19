@@ -68,6 +68,16 @@ const FICHES = [
       'Réponses : « Je surveille » / « Looking out » ; dès que vu : « DR400 en vue » / « DR400 in sight ».',
       'Si vous ne le voyez pas et que le risque augmente : « Pas visuel sur le trafic, demande suggestion de manœuvre ».',
     ] },
+  { id: 'afis', titre: 'AFIS et auto-information', src: 'Arrêté du 12 juillet 2019, annexe, partie B § 7.1.2, 7.1.3, 8.2 et 9 ; partie C § 7 ; AIP France ENR 1.2 § 1.2.8.2 ; Manuel AFIS UAF & FA (mai 2019, document d’information sans valeur juridique), p. 28-41',
+    points: [
+      'Un aérodrome AFIS est réservé aux aéronefs munis d’une radio. L’agent AFIS donne des informations, pas de clairances : le pilote annonce ses intentions (« roulons… », « décollons… ») et assure sa séparation.',
+      'On collationne au minimum la piste en service, la visibilité et le calage altimétrique, ainsi que les éléments d’une clairance du contrôle relayée par l’AFIS (fréquence, code, cap, niveau…).',
+      'En AFIS, si aucun aéronef n’est dans la circulation d’aérodrome, on peut s’intégrer directement en finale ou en base.',
+      'Sans ATS (auto-information) : on utilise la fréquence de l’aérodrome, sinon la fréquence commune 123,500 MHz. Altiport sans fréquence propre : 130,000 MHz. Plate-forme ULM hors aérodrome : 125,335 MHz, jamais au-dessus de 3000 ft ASFC.',
+      'Comptes rendus obligatoires à l’arrivée : avant de s’intégrer, vent arrière, base, finale, piste dégagée, aire de trafic. Au départ : aire de trafic avant de bouger, point d’attente avant la piste, aligné avant de décoller, en quittant la circulation.',
+      'Sans ATS, l’examen de l’aérodrome se fait au-dessus du plus haut des circuits, sauf impossibilité ; on peut s’en dispenser si les messages d’auto-information ont appris la piste en service.',
+      'Aucun texte officiel ne fixe la formulation exacte des messages d’auto-information.',
+    ] },
   { id: 'signaux', titre: 'Signaux lumineux de la tour', src: SERA('appendice 1, tableau AP 1-1 et 3.1.2'),
     points: [
       'Vert continu : en vol, autorisé à atterrir ; au sol, autorisé à décoller.',
