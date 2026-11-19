@@ -18,10 +18,32 @@
       <button id="statsBtn" title="Statistiques">📊 Stats</button>
     </div>
   </header>
+  <nav class="tools">
+    <button id="examBtn">🎓 Examen blanc</button>
+    <button id="defiBtn">🏆 Défi du jour</button>
+    <button id="fichesBtn">📚 Fiches de cours</button>
+    <button id="glossBtn">📖 Glossaire FR ⇄ EN</button>
+  </nav>
+
+  <dialog id="fiches">
+    <h2>📚 Fiches de cours</h2>
+    <div id="ficheNav" class="fnav"></div>
+    <div id="ficheBody"></div>
+    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
+  </dialog>
+
+  <dialog id="glossaire">
+    <h2>📖 Glossaire FR ⇄ EN</h2>
+    <p class="muted">Expressions du Manuel de phraséologie DSNA (page indiquée).</p>
+    <div class="row"><input id="glossQ" type="search" placeholder="Chercher…">
+      <button id="listeBtn">Liste</button><button id="cartesBtn">🃏 Carte au hasard</button></div>
+    <div id="glossBody"></div>
+    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
+  </dialog>
 
   <dialog id="stats">
     <h2>📊 Mes statistiques</h2>
-    <p class="muted">Taux de réussite par catégorie (nombre de réponses entre parenthèses). Enregistré sur cet appareil.</p>
+    <p class="muted">Enregistré sur cet appareil uniquement.</p>
     <div id="statsBody"></div>
     <div class="row">
       <button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
@@ -42,11 +64,13 @@
         <input type="radio" name="regle" id="r-ifr" value="ifr"><label for="r-ifr">IFR</label>
         <input type="radio" name="regle" id="r-alpha" value="alpha"><label for="r-alpha">Alphabet OACI</label>
         <input type="radio" name="regle" id="r-err" value="err"><label for="r-err">❌ Mes erreurs</label>
+        <input type="radio" name="regle" id="r-due" value="due"><label for="r-due">📅 À réviser</label>
       </fieldset>
       <fieldset class="seg"><legend>Mode</legend>
         <input type="radio" name="mode" id="m-qcm" value="qcm" checked><label for="m-qcm">QCM</label>
         <input type="radio" name="mode" id="m-ecrit" value="ecrit"><label for="m-ecrit">✍️ Écrit</label>
         <input type="radio" name="mode" id="m-oral" value="oral"><label for="m-oral">🎤 Oral</label>
+        <input type="radio" name="mode" id="m-dictee" value="dictee"><label for="m-dictee" title="Écoutez un message long et notez-le en entier">📝 Dictée</label>
       </fieldset>
       <fieldset class="seg"><legend>Niveau</legend>
         <input type="radio" name="niv" id="n-1" value="1" checked><label for="n-1" title="Voix lente, sans parasites, messages simples">Débutant</label>
@@ -80,6 +104,8 @@
   <script src="realism.js"></script>
   <script src="data.js"></script>
   <script src="data-plus.js"></script>
+  <script src="courses.js"></script>
+  <script src="learn.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

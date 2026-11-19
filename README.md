@@ -45,6 +45,19 @@ Suivi : les questions ratées reviennent plus souvent et sont regroupées dans *
 écrite/orale montre mot à mot ce qui manque ou est faux (« piste 34 → 43 », « QNH 1013 oublié ») ; **📊 Stats** donne
 le taux de réussite par langue, règles et phase de vol. La progression reste enregistrée dans le navigateur de l'appareil.
 
+Apprentissage :
+- **🎓 Examen blanc** : 20 questions en QCM, 15 minutes, correction détaillée seulement à la fin (format d'entraînement,
+  pas le format officiel d'un examen).
+- **🏆 Défi du jour** : 10 questions, les mêmes pour tout le monde le même jour ; historique de vos scores.
+- **📚 Fiches de cours** : collationnement, forme du collationnement, nombres, indicatifs, ordre des éléments,
+  détresse et urgence, répétitions, essai radio, information de trafic, signaux lumineux — chacune avec ses sources.
+- **❓ Pourquoi ?** sous chaque correction : les règles qui s'appliquent, avec l'article ou la page, et la fiche liée.
+- **📅 À réviser** (répétition espacée) : une question réussie revient après 1, 3, 7 puis 14 jours ; ratée, tout de suite.
+- **📝 Dictée** : un message long est lu (texte masqué), on le note en entier, la correction se fait mot à mot.
+- **📖 Glossaire FR ⇄ EN** : expressions du manuel, avec recherche et cartes à retourner.
+- **🏅 Badges** et **🧭 bilan personnalisé** (après 50 réponses : vos erreurs les plus fréquentes et quoi travailler),
+  dans 📊 Stats.
+
 ## Sources
 Chaque exercice a été vérifié et indique la page ou l'article exact :
 - **DSNA – Manuel de phraséologie à l'usage de la circulation aérienne générale**, 10e édition, à jour au 15 avril 2023

@@ -4,18 +4,24 @@ const val = n => $(`input[name=${n}]:checked`).value;
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let pool = [], idx = 0, cur, ok = 0, total = 0, streak = 0, answered = false;
 
-// ── Progression enregistrée sur l'appareil : { id: [réussites, échecs, dernière réponse juste 0/1] } ──
-const KEY = 'phraseo-progress-v1';
-let prog = {};
+// ── Progression enregistrée sur l'appareil ──
+// prog : { id: [réussites, échecs, dernière réponse juste 0/1, boîte de révision, échéance] } (voir learn.js)
+// extra : { best: meilleure série, exams: [{date, pct}], defi: {date: score}, tally: {type d'erreur: nombre} }
+const KEY = 'phraseo-progress-v1', KEY2 = 'phraseo-extra-v1';
+let prog = {}, extra = {};
 try { prog = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prog)); } catch {} };
+try { extra = JSON.parse(localStorage.getItem(KEY2)) || {}; } catch {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(prog)); localStorage.setItem(KEY2, JSON.stringify(extra)); } catch {} };
 const isErr = q => prog[q.id]?.[2] === 0;
+const isDue = q => isDueP(prog[q.id]);
 function record(good) {
-  const p = prog[cur.id] || (prog[cur.id] = [0, 0, 0]);
-  p[good ? 0 : 1]++; p[2] = good ? 1 : 0;
+  prog[cur.id] = leitner(prog[cur.id], good);
   save(); errCount();
 }
-function errCount() { $('label[for=r-err]').textContent = `❌ Mes erreurs (${QUESTIONS.filter(isErr).length})`; }
+function errCount() {
+  $('label[for=r-err]').textContent = `❌ Mes erreurs (${QUESTIONS.filter(isErr).length})`;
+  $('label[for=r-due]').textContent = `📅 À réviser (${QUESTIONS.filter(isDue).length})`;
+}
 
 // Catégories pour les statistiques
 // (la phase se déduit du message : sur un petit terrain, c'est la Tour qui gère aussi le roulage)
@@ -40,22 +46,55 @@ function showStats() {
     return `<tr><td>${esc(c)}</td><td><div class="meter"><div style="width:${pct ?? 0}%;background:${color(pct)}"></div></div></td>
       <td class="num">${pct == null ? '—' : pct + ' %'} <span class="muted">(${n})</span></td></tr>`;
   }).join('')).join('');
-  $('#statsBody').innerHTML = `<table>${rows}</table>`;
+  const answered = Object.values(prog).reduce((s, p) => s + p[0] + p[1], 0);
+  const b = bilan(extra.tally, answered);
+  const weak = Object.entries(g['Sujet / phase'] || {}).map(([c, [o, k]]) => [c, o + k ? o / (o + k) : 1, o + k])
+    .filter(([, r, n]) => n >= 5 && r < 0.7).sort((x, y) => x[1] - y[1]).slice(0, 2);
+  const bil = !b.pret ? `<p class="muted">Bilan disponible après 50 réponses (encore ${b.reste}).</p>`
+    : `${b.top.length ? `<ul>${b.top.map(t => `<li><strong>${esc(t.titre)}</strong> (${t.n} fois) : ${esc(t.conseil)}
+        <button class="ghost" data-fiche="${t.fiche}">📚 Fiche</button></li>`).join('')}</ul>` : '<p>Aucune erreur type relevée. Continuez !</p>'}
+      ${weak.length ? `<p>À travailler en priorité : ${weak.map(([c, r]) => `<strong>${esc(c)}</strong> (${Math.round(r * 100)} %)`).join(', ')}.</p>` : ''}
+      <p class="muted">${QUESTIONS.filter(isDue).length} exercice(s) à réviser aujourd’hui (thème « 📅 À réviser »).</p>`;
+  $('#statsBody').innerHTML = `<h3>🧭 Bilan personnalisé</h3>${bil}
+    <h3>🏅 Badges</h3><div class="badges">${badges(QUESTIONS, prog, extra).map(x =>
+      `<span class="badge ${x.ok ? 'got' : ''}" title="${esc(x.desc)}">${x.icon} ${esc(x.nom)}<small>${esc(x.desc)}</small></span>`).join('')}</div>
+    <h3>📊 Réussite par catégorie</h3><table>${rows}</table>`;
+  $$('#statsBody [data-fiche]').forEach(x => x.addEventListener('click', () => { $('#stats').close(); openFiche(x.dataset.fiche); }));
   $('#stats').showModal();
 }
 
-function start() {
-  const l = val('lang'), r = val('regle'), m = val('mode'), chrono = $('#chrono').checked, su = $('#sujet').value;
-  pool = QUESTIONS.filter(q => (su === 'all' || r === 'alpha' || (q.cat || 'base') === su) &&
-    (r === 'err' ? isErr(q) && (l === 'all' || q.regle === 'alpha' || q.lang === l)
-      : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && (l === 'all' || q.lang === l))
-    && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
-  if (!chrono) {
-    if (r !== 'err') pool = pool.concat(pool.filter(isErr)); // les questions ratées reviennent deux fois plus souvent
-    pool.sort(() => Math.random() - 0.5);
+// session : null (entraînement libre), { type: 'exam' } (examen blanc) ou { type: 'defi' } (défi du jour)
+let session = null, timer = null;
+const EXAM_N = 20, EXAM_MIN = 15;
+const today = () => new Date().toISOString().slice(0, 10);
+const modeNow = () => session ? 'qcm' : val('mode');
+const words = s => s.split(' ').length;
+
+function start(sess = null) {
+  session = sess; clearInterval(timer);
+  const l = val('lang'), r = val('regle'), m = modeNow(), chrono = !session && $('#chrono').checked, su = $('#sujet').value;
+  const langOk = q => l === 'all' || q.regle === 'alpha' || q.lang === l;
+  if (session?.type === 'defi') pool = dailyPick(QUESTIONS, today(), 10); // identique pour tout le monde
+  else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
+    pool = QUESTIONS.filter(q => langOk(q) && (q.niv || 1) <= 2).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
+  else {
+    pool = QUESTIONS.filter(q => (su === 'all' || r === 'alpha' || (q.cat || 'base') === su) &&
+      (r === 'err' ? isErr(q) && langOk(q) : r === 'due' ? isDue(q) && langOk(q)
+        : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && langOk(q))
+      && (m === 'qcm' || !q.qcmOnly) && (m !== 'dictee' || (q.atc && !q.q && words(q.atc) >= 8))
+      && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
+    if (!chrono) {
+      if (r !== 'err' && r !== 'due') pool = pool.concat(pool.filter(isErr)); // les questions ratées reviennent deux fois plus souvent
+      pool.sort(() => Math.random() - 0.5);
+    }
+  }
+  if (session) {
+    session.log = []; session.t0 = Date.now();
+    if (session.type === 'exam') { session.deadline = session.t0 + EXAM_MIN * 60000; timer = setInterval(tick, 1000); }
   }
   idx = ok = total = streak = 0;
-  series = $('#random').checked ? newCallsign() : 'F-GBCD'; // un indicatif par série, comme un vrai vol
+  // un indicatif par série, comme un vrai vol ; F-GBCD pour le défi du jour (identique pour tous)
+  series = $('#random').checked && session?.type !== 'defi' ? newCallsign() : 'F-GBCD';
   memo = {}; // même piste et mêmes codes pendant toute la série
   stats();
   next();
@@ -67,11 +106,14 @@ function prepare(q) {
   if (q.regle === 'alpha' || q.prepared) return q;
   const en = q.lang === 'en', chrono = $('#chrono').checked;
   // indicatif abrégé : seulement après un premier échange et à l'initiative du contrôleur (Manuel p. 18)
-  const short = !!q.atc && q.cat !== 'atis' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
+  const short = !session && !!q.atc && q.cat !== 'atis' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
   const shown = short ? abbrev(series) : series;
-  let c = vary(q, { cs: series, shown, values: $('#random').checked, memo });
+  let c = vary(q, { cs: series, shown, values: $('#random').checked && session?.type !== 'defi', memo });
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
+  if (session) return c; // examen et défi : pas de piège radio
+  if (modeNow() === 'dictee') return { ...c, answers: [c.atc], dictee: true,
+    q: en ? 'Write down the whole message:' : 'Notez le message complet :', src: `${c.src} (dictée du message)` };
   if ($('#busy').checked && c.atc && c.st && !c.q && Math.random() < 0.3) {
     const other = Math.random() < 0.5 ? similarCallsign(series) : newCallsign();
     return { ...c, atc: c.atc.replace(shown, other), notMine: other };
@@ -99,11 +141,13 @@ function next() {
   cur = prepare(pool[idx++]);
   answered = false;
   stats();
-  const mode = val('mode'), en = cur.lang === 'en', listen = ($('#ecoute').checked || LEVELS[val('niv')].listen) && cur.atc;
+  const mode = modeNow(), en = cur.lang === 'en';
+  const listen = ($('#ecoute').checked || LEVELS[val('niv')].listen || cur.dictee) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
+  const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc' : `🏆 Défi du ${today()}`}</span>` : '';
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
-    <span class="prog"><span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
-    <div class="tags"><span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
+    <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
+    <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc">${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
@@ -113,8 +157,8 @@ function next() {
   if (mode === 'qcm') {
     const opts = [cur.answers[0], ...cur.wrong].sort(() => Math.random() - 0.5);
     h += `<div class="opts">${opts.map((o, i) => `<button data-o="${esc(o)}"><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`).join('')}</div>`;
-  } else if (mode === 'ecrit') {
-    h += `<textarea id="txt" placeholder="${en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
+  } else if (mode === 'ecrit' || mode === 'dictee') {
+    h += `<textarea id="txt" placeholder="${cur.dictee ? (en ? 'The message…' : 'Le message…') : en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
       <div class="row"><button class="primary" id="go">Valider</button></div>`;
   } else {
     h += SR ? `<div class="row"><button class="primary mic" id="mic">🎤 Appuyer pour parler</button><span id="heard" class="muted"></span></div>`
@@ -130,6 +174,15 @@ function next() {
   $('#mic')?.addEventListener('click', listenMic);
   if (listen) say();
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
+  tick();
+}
+
+// Chronomètre de l'examen blanc
+function tick() {
+  if (session?.type !== 'exam') return;
+  const left = Math.max(0, session.deadline - Date.now());
+  if ($('#timer')) $('#timer').textContent = `⏱ ${Math.floor(left / 60000)}:${String(Math.floor(left / 1000) % 60).padStart(2, '0')}`;
+  if (!left) { clearInterval(timer); end(); }
 }
 
 // ── Voix du contrôleur ──
@@ -198,7 +251,7 @@ function pick(b) {
   const good = !cur.notMine && b.dataset.o === cur.answers[0];
   $$('.opts button').forEach(x => { x.disabled = true; if (!cur.notMine && x.dataset.o === cur.answers[0]) x.classList.add('good'); });
   if (!good) b.classList.add('bad');
-  feedback(good);
+  feedback(good, { chosen: b.dataset.o });
 }
 
 function listenMic() {
@@ -229,13 +282,18 @@ function grade(text) {
 
 const paint = (cs, cls) => cs.map(c => c.bad ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text)).join(' ');
 
-function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm = false } = {}) {
+function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm = false, chosen = '' } = {}) {
   answered = true;
   const counted = !cur.retry;
   if (counted) {
-    if (!cur.notMine && !cur.cut) record(good); // les cartes « autre avion » et « coupure » ne touchent pas la progression
+    if (!cur.notMine && !cur.cut && !cur.dictee) record(good); // ces cartes ne touchent pas la révision
     total++; if (good) { ok++; streak++; } else streak = 0;
+    extra.best = Math.max(extra.best || 0, streak);
+    if (!good) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
+    save();
   }
+  if (session) session.log.push({ q: cur, good, chosen: chosen || said });
+  if (session?.type === 'exam') return next(); // examen : correction seulement à la fin
   stats();
   $('#atc')?.classList.remove('hidden');
   if ($('#go')) $('#go').disabled = true;
@@ -245,17 +303,21 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     : `❌ Ce message était pour ${cur.notMine}, pas pour vous (${cur.shown}) : il ne fallait pas répondre.`;
   else if (nm) head = `❌ Ce message était pour vous (${cur.shown}) : il fallait répondre.`;
   if (cur.retry) head = `2e essai (non compté) : ${head}`;
-  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && cur.atc && val('mode') !== 'qcm';
+  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && cur.atc && modeNow() !== 'qcm';
+  const why = whyRules(cur), fiche = FICHES.find(f => f.id === why.fiche);
   $('#fb').innerHTML = `<div class="fb ${good ? 'ok' : 'ko'}">
     <p><strong>${esc(head)}</strong></p>
     ${notes.length ? `<ul class="notes">${notes.slice(0, 6).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
     ${said ? `<p>Votre réponse : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
     ${cur.notMine ? '' : `<p>Réponse attendue : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>`}
     <p class="src">📘 Source : ${esc(cur.notMine ? `${MANUEL(24)} (confusion d’indicatifs)` : cur.src)}</p>
+    <details class="why"><summary>❓ Pourquoi ?</summary><ul>${why.regles.map(r => `<li>${esc(r.texte)} <span class="src">(${esc(r.src)})</span></li>`).join('')}</ul>
+      ${fiche ? `<button class="ghost" data-fiche="${fiche.id}">📚 Fiche : ${esc(fiche.titre)}</button>` : ''}</details>
     <div class="row">${canRetry ? '<button id="again1">🔁 Le contrôleur corrige (« Négatif je répète »)</button>' : ''}
     <button class="primary" id="nx">Suivant →</button></div></div>`;
   if (cur.cut) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
   $('#again1')?.addEventListener('click', retry);
+  $('#fb [data-fiche]')?.addEventListener('click', e => openFiche(e.target.dataset.fiche));
   $('#nx').addEventListener('click', next);
   $('#nx').focus();
 }
@@ -271,14 +333,55 @@ function retry() {
 }
 
 function end() {
+  clearInterval(timer); speechSynthesis.cancel(); stopHiss();
   stats();
-  const pct = total ? Math.round(100 * ok / total) : 0;
-  $('#card').innerHTML = `<div class="radio"><span class="led"></span><span>COM1</span><strong>FIN DE SÉRIE</strong></div>
-    <p class="ctx">Série terminée : ${ok} / ${total} (${pct} %)</p>
-    <div class="row" style="margin:0 20px"><button class="primary" id="again">Recommencer</button></div>`;
-  $('#again').addEventListener('click', start);
+  const n = session?.type === 'exam' ? pool.length : total; // examen : les questions sans réponse comptent fausses
+  const pct = n ? Math.round(100 * ok / n) : 0;
+  let title = 'FIN DE SÉRIE', body = `<p class="ctx">Série terminée : ${ok} / ${total} (${pct} %)</p>`;
+  if (session?.type === 'exam') {
+    const mins = Math.round((Date.now() - session.t0) / 60000);
+    (extra.exams ||= []).push({ date: today(), pct }); save();
+    const ko = session.log.filter(x => !x.good);
+    title = 'EXAMEN BLANC';
+    body = `<p class="ctx">${pct >= 75 ? '✅' : '❌'} Note : ${ok} / ${n} (${pct} %) en ${mins} min.
+      ${n > total ? `${n - total} question(s) sans réponse (temps écoulé).` : ''}</p>
+      <p class="muted" style="margin:0 20px">Format d'entraînement (${EXAM_N} questions, ${EXAM_MIN} min) : ce n'est pas le format officiel d'un examen.</p>
+      ${ko.length ? `<ol class="review">${ko.map(x => `<li><strong>${esc(x.q.q || x.q.atc)}</strong><br>
+        Votre réponse : <span class="extra">${esc(x.chosen)}</span><br>Bonne réponse : <strong>${esc(x.q.answers[0])}</strong>
+        <br><span class="src">📘 ${esc(x.q.src)}</span></li>`).join('')}</ol>` : '<p class="ctx">Aucune erreur. Bravo !</p>'}`;
+  } else if (session?.type === 'defi') {
+    (extra.defi ||= {})[today()] = ok; save();
+    const last = Object.entries(extra.defi).sort().slice(-7).map(([d, s]) => `${d.slice(5)} : ${s}/10`).join(' · ');
+    title = 'DÉFI DU JOUR';
+    body = `<p class="ctx">🏆 Défi du ${today()} : ${ok} / ${total}. Revenez demain pour un nouveau défi.</p>
+      <p class="muted" style="margin:0 20px">Vos derniers défis : ${esc(last)}</p>`;
+  }
+  $('#card').innerHTML = `<div class="radio"><span class="led"></span><span>COM1</span><strong>${title}</strong></div>${body}
+    <div class="row" style="margin:12px 20px 0"><button class="primary" id="again">${session ? 'Retour à l’entraînement' : 'Recommencer'}</button></div>`;
+  $('#again').addEventListener('click', () => start());
   $('#again').focus();
 }
+
+// ── Fiches de cours, glossaire, statistiques (badges et bilan) ──
+function openFiche(id = FICHES[0].id) {
+  const f = FICHES.find(x => x.id === id) || FICHES[0];
+  $('#ficheNav').innerHTML = FICHES.map(x => `<button class="${x.id === f.id ? 'primary' : 'ghost'}" data-id="${x.id}">${esc(x.titre)}</button>`).join('');
+  $('#ficheBody').innerHTML = `<h3>${esc(f.titre)}</h3><ul>${f.points.map(p => `<li>${esc(p)}</li>`).join('')}</ul><p class="src">📘 ${esc(f.src)}</p>`;
+  $$('#ficheNav button').forEach(b => b.addEventListener('click', () => openFiche(b.dataset.id)));
+  if (!$('#fiches').open) $('#fiches').showModal();
+}
+
+let carte = null;
+function showGlossaire() {
+  const f = $('#glossQ').value.toLowerCase();
+  $('#glossBody').innerHTML = carte
+    ? `<button class="flip" id="flip"><span>${esc(carte.face ? carte.c[1] : carte.c[0])}</span><small>${carte.face ? 'EN' : 'FR'} · cliquez pour retourner</small></button>
+       <p class="src">📘 ${esc(MANUEL(carte.c[2]))}</p>`
+    : `<table>${GLOSSAIRE.filter(g => !f || (g[0] + ' ' + g[1]).toLowerCase().includes(f))
+        .map(([fr, en, p]) => `<tr><td>${esc(fr)}</td><td>${esc(en)}</td><td class="num muted">p. ${p}</td></tr>`).join('')}</table>`;
+  $('#flip')?.addEventListener('click', () => { carte.face = !carte.face; showGlossaire(); });
+}
+function nextCarte() { carte = { c: GLOSSAIRE[Math.floor(Math.random() * GLOSSAIRE.length)], face: Math.random() < 0.5 }; showGlossaire(); }
 
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA') {
@@ -289,11 +392,20 @@ document.addEventListener('keydown', e => {
 });
 
 $('#sujet').insertAdjacentHTML('beforeend', Object.entries(SUJETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
-$$('.settings input, #sujet').forEach(i => i.addEventListener('change', start));
+$$('.settings input, #sujet').forEach(i => i.addEventListener('change', () => start()));
 $('#statsBtn').addEventListener('click', showStats);
+$('#examBtn').addEventListener('click', () => {
+  if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, correction à la fin. Commencer ?`)) start({ type: 'exam' });
+});
+$('#defiBtn').addEventListener('click', () => start({ type: 'defi' }));
+$('#fichesBtn').addEventListener('click', () => openFiche());
+$('#glossBtn').addEventListener('click', () => { carte = null; showGlossaire(); $('#glossaire').showModal(); });
+$('#glossQ').addEventListener('input', () => { carte = null; showGlossaire(); });
+$('#cartesBtn').addEventListener('click', nextCarte);
+$('#listeBtn').addEventListener('click', () => { carte = null; showGlossaire(); });
 $('#reset').addEventListener('click', () => {
   if (!confirm('Effacer toute votre progression enregistrée sur cet appareil ?')) return;
-  prog = {}; save(); errCount(); $('#stats').close(); start();
+  prog = {}; extra = {}; save(); errCount(); $('#stats').close(); start();
 });
 QUESTIONS.forEach(q => { q.id = hash([q.lang, q.regle, q.atc, q.q, q.ctx].join('|')).toString(36); });
 errCount();

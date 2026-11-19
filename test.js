@@ -74,3 +74,20 @@ assert(check('Tower, F-GBCD, radio check one one eight decimal seven', ['Tower, 
 console.log('réalisme OK');
 assert(!/piste 24|runway 24/.test(R.vary(QUESTIONS.find(q => q.ctx === 'En finale piste 24.'), { cs: 'F-GXYZ', rnd: () => 0.5 }).ctx), 'situation variée');console.log('ctx OK');
 { const w = R.vary(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.'), { cs: 'F-GXYZ', memo: { rw24: '13' } }); assert.strictEqual(w.atc, 'F-GXYZ, piste 13, autorisé décollage, vent 150 degrés 8 nœuds.'); console.log('vent OK'); }
+
+// ── Apprentissage ──
+global.MANUEL = p => `Manuel p. ${p}`; global.SERA = a => `SERA ${a}`;
+const L = require('./learn.js');
+let p = L.leitner(undefined, true, 0); assert.deepStrictEqual(p, [1, 0, 1, 1, L.DAY]);
+p = L.leitner(p, true, 0); assert.strictEqual(p[3], 2); assert.strictEqual(p[4], 3 * L.DAY);
+p = L.leitner(p, false, 5); assert.deepStrictEqual(p.slice(1), [1, 0, 0, 5]);
+assert(L.isDueP([1, 0, 1], 10), 'ancienne progression = à revoir'); assert(!L.isDueP([1, 0, 1, 1, 100], 10));
+const d1 = L.dailyPick(QUESTIONS, '2026-11-19').map(q => q.q || q.atc), d2 = L.dailyPick(QUESTIONS, '2026-11-19').map(q => q.q || q.atc);
+assert.deepStrictEqual(d1, d2, 'défi identique pour tous'); assert.notDeepStrictEqual(d1, L.dailyPick(QUESTIONS, '2026-11-20').map(q => q.q || q.atc));
+assert.deepStrictEqual(L.classify(['QNH 1009 oublié', 'piste 32 → 23', 'indicatif oublié', 'roulons → roule'], 'Roger'), ['roger', 'qnh', 'piste', 'indicatif', 'forme']);
+assert.strictEqual(L.bilan({}, 10).reste, 40);
+assert.deepStrictEqual(L.bilan({ qnh: 5, piste: 2, indicatif: 7, cap: 1 }, 60).top.map(t => t.n), [7, 5, 2]);
+QUESTIONS.forEach(q => { const w = L.whyRules(q); assert(w.regles.length > 0); });
+assert(L.whyRules(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.')).regles.some(r => /SERA.8015/.test(r.src)));
+assert.strictEqual(L.badges(QUESTIONS, {}, {}).length, 10);
+console.log('apprentissage OK');
