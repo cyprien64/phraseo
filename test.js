@@ -210,3 +210,18 @@ console.log('ATIS station automatique OK');
   assert(R.atsOpen(TERRAINS.find(t => t.icao === 'LFBT'), new Date('2026-11-19T00:30Z')), 'plage de nuit 2330-0200');
   assert(!R.atsOpen(ly, new Date('2026-11-22T06:00Z')) && R.atsOpen(ly, new Date('2026-11-23T06:00Z')), 'Bron : dimanche 0700, lundi 0530');
   console.log('VAC, AIP, horaires, rafales OK'); }
+
+// ── Trafic réel (OpenSky) mis en forme d'information de trafic ──
+{ const own = { lat: 43.38, lon: -0.42, hdg: 310, alt: 1600 };
+  // avion 4 NM au nord-ouest... calculé : à 300° vrai, 4 NM, 2600 ft, route 040 (vers la droite)
+  const lat = 43.38 + 4 * Math.cos(300 * Math.PI / 180) / 60, lon = -0.42 + 4 * Math.sin(300 * Math.PI / 180) / 60 / Math.cos(43.38 * Math.PI / 180);
+  const t = R.trafficInfo(own, ['3c', 'HOP7496 ', 'France', 0, 0, lon, lat, 2600 / 3.28084, false, 60, 40], 'fr');
+  assert.strictEqual(t.text, 'trafic 12 heures, 4 nautiques, gauche vers droite, 1000 pieds plus haut');
+  assert.strictEqual(R.trafficInfo(own, ['3c', 'X', '', 0, 0, lon, lat, 1650 / 3.28084, false, 60, 130], 'en').text, "traffic 12 o'clock, 4 miles, opposite direction, same level");
+  assert.strictEqual(R.trafficInfo(own, ['3c', 'X', '', 0, 0, lon, lat, 600, true, 0, 0], 'fr'), null, 'au sol');
+  assert.strictEqual(R.trafficInfo(own, ['3c', 'X', '', 0, 0, lon + 1, lat, 600, false, 60, 0], 'fr'), null, 'trop loin');
+  const right = R.trafficInfo({ ...own, hdg: 0 }, ['3c', 'X', '', 0, 0, -0.42 + 3 / 60 / Math.cos(43.38 * Math.PI / 180), 43.38, 1000 / 3.28084, false, 150, 270], 'fr');
+  assert.strictEqual(right.text, 'trafic 3 heures, 3 nautiques, droite vers gauche, rapide, 600 pieds plus bas');
+  const tr = QUESTIONS.find(q => q.cat === 'trafic' && q.lang === 'fr' && q.atc);
+  ['Je surveille, F-GBCD', 'Roger, je regarde, F-GBCD'].forEach(a => assert(check(a, tr.answers).pass));
+  console.log('trafic réel OK'); }

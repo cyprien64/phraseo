@@ -44,6 +44,12 @@ Réalisme :
   - **Horaires** (AD 2.3) : hors horaires ATS publiés, un avertissement indique qu'en réalité il n'y a pas de contrôle.
   - **Rafales** du METAR dans les clairances : « vent 260 degrés 15 nœuds, rafales 25 nœuds » (Manuel p. 154).
   - **Exercices selon la météo** : visibilité ou plafond bas → VFR spécial ; vent fort → remise de gaz.
+- **✈️ Trafic réel** (avec un terrain réel) : GitHub relève toutes les 30 minutes les positions ADS-B publiées par
+  The OpenSky Network (opensky-network.org) ; la série propose alors une information de trafic sur les avions réellement
+  présents à moins de 15 NM au moment du relevé, vus depuis votre avion qui vient de décoller (« trafic 12 heures,
+  2 nautiques, même sens, 1700 pieds plus haut »), sur le modèle du manuel (p. 89-92). OpenSky ne donne pas le type
+  d'avion : il est remplacé par « rapide » ou « lent » selon la vitesse. Positions vieilles de 30 minutes au plus ;
+  relevé de plus de 2 heures : ignoré ; aucun avion à proximité : pas d'exercice.
 - **Contrôleur** : à l'écrit et à l'oral, un collationnement faux reçoit tout de suite « Négatif je répète » et la clairance
   (SERA.14075 d)), la correction détaillée vient après le 2e essai ; en Expert et Expert+, sans réponse au bout de
   10 secondes, le contrôleur vous appelle (« F-CD, Pau Tour », SERA.14055 b)).

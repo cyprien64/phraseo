@@ -123,7 +123,7 @@ function start(sess = null) {
   wx = terrain && wxOf(terrain.icao);
   if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir, wx?.wspd, terrain.pref);
   atisLetter = terrain && wx ? atisFromMetar(wx.raw, terrain, memo.rw24, 'fr')?.letter : null; // même lettre dans toute la série
-  const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav'].includes($('#sujet').value)
+  const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav', 'trafic'].includes($('#sujet').value)
     && !['fautif', 'dictee'].includes(val('mode')) ? liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')) : [];
   if (live.length) pool = [...live, ...pool.filter(q => q.cat !== 'atis')]; // l'ATIS reconstitué remplace l'ATIS fictif de Saint-Exémery
   // météo réelle : visibilité ou plafond bas → VFR spécial ; vent fort ou rafales → remise de gaz (exercices vérifiés existants)
@@ -137,6 +137,8 @@ function start(sess = null) {
       ...(windy ? tag(/remettez les gaz|go around/, '💨 Vent fort au METAR.') : [])];
     pool.splice(live.length, 0, ...extraWx);
   }
+  // trafic réel autour du terrain (relevé OpenSky) : information de trafic juste après le décollage
+  if (live.length && ['all', 'trafic'].includes($('#sujet').value)) pool.splice(live.length, 0, ...liveTraffic(live[0].lang));
   stats();
   next();
 }
@@ -202,6 +204,32 @@ function chatterFor(q, c) {
   let v = vary(x, { cs, values: true, memo: { ...memo } });
   if (terrain) v = realTerrain(v, terrain, wx, atisLetter, memo.rw24);
   return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
+}
+
+// Trafic réel relevé par GitHub toutes les 30 min (traffic.json, OpenSky Network) ; relevé de plus de 2 h : ignoré.
+let TRAFFIC = null;
+function liveTraffic(lang) {
+  const st = Array.isArray(METAR) && METAR.find(x => x.icaoId === terrain.icao);
+  if (!TRAFFIC?.states || !st || Date.now() / 1000 - TRAFFIC.time > 2 * 3600) return [];
+  const en = lang === 'en', rwy = memo.rw24, own = { lat: st.lat, lon: st.lon, hdg: +rwy * 10, alt: terrain.tdp };
+  const seen = TRAFFIC.states.map(s => trafficInfo(own, s, lang)).filter(Boolean).sort((a, b) => a.dist - b.dist).slice(0, 2);
+  const hhmm = new Date(TRAFFIC.time * 1000).toISOString().slice(11, 16).replace(':', '');
+  const cs = series, callsigns = [csKey(cs), csKey(abbrev(cs))];
+  const src = `Position réelle relevée à ${hhmm} UTC par The OpenSky Network (ADS-B, opensky-network.org) ; forme du ${MANUEL(89)} et p. 90-92`;
+  const base = { live: true, prepared: true, cat: 'trafic', lang, regle: 'vfr', shown: cs, callsigns, src,
+    st: `${terrain.radio} ${en ? 'Tower' : 'Tour'} ${en ? terrain.tour.replace(',', '.') : terrain.tour}`,
+    ctx: en ? `Just airborne from runway ${rwy} at ${terrain.nom}, climbing through ${terrain.tdp} feet. Traffic picture recorded at ${hhmm} UTC.`
+      : `Vous venez de décoller piste ${rwy} de ${terrain.nom}, vers ${terrain.tdp} pieds. Trafic réel relevé à ${hhmm} UTC.` };
+  return seen.flatMap((t, i) => {
+    const atc = `${cs}, ${t.text}.`;
+    const card = { ...base, atc, answers: en ? [`Looking out, ${cs}`, `Roger, looking, ${cs}`] : [`Je surveille, ${cs}`, `Roger, je regarde, ${cs}`],
+      wrong: en ? [`Traffic in sight, ${cs}`, `Wilco, ${cs}`, `Negative, ${cs}`] : [`Trafic en vue, ${cs}`, `Wilco, ${cs}`, `Négatif, ${cs}`] };
+    if (i) return [card];
+    // compréhension (QCM) : où est le trafic ?
+    const other = h => (((t.clock + h - 1) % 12) + 12) % 12 + 1;
+    const opt = h => t.pos.replace(/^\d+/, other(h)).replace(/^1 heures/, '1 heure').replace(/^(\d\d?) heure,/, (m, n) => (n > 1 ? `${n} heures,` : m));
+    return [card, { ...base, atc, qcmOnly: true, q: en ? 'Where is the traffic?' : 'Où se trouve le trafic ?', answers: [t.pos], wrong: [opt(6), opt(1), opt(-2)] }];
+  });
 }
 
 // ATIS du terrain réel, mis en forme à partir du dernier METAR (realism.js) : deux questions tirées au hasard.
@@ -731,6 +759,7 @@ $('#terrain').insertAdjacentHTML('beforeend', TERRAINS.map(t => `<option value="
 $$('.settings input, #sujet, #terrain').forEach(i => i.addEventListener('change', () => start()));
 $('#statsBtn').addEventListener('click', showStats);
 $('#parcoursBtn').addEventListener('click', showParcours);
+fetch('traffic.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { TRAFFIC = j; }).catch(() => {});
 fetch('metar.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(j => { METAR = j; if ($('#terrain').value) start(); }).catch(() => {});
 $('#examBtn').addEventListener('click', () => {
   if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, réussite à ${EXAM_OK} %, correction à la fin. Commencer ?`)) start({ type: 'exam' });

@@ -282,6 +282,31 @@ function atisChoices(a, pistes) {
   return out;
 }
 
+// Information de trafic à partir d'une position réelle relevée par OpenSky Network (ADS-B), sur le modèle du manuel DSNA
+// (p. 89 : « trafic 11 heures, 4 nautiques, gauche vers droite, …, 1 000 pieds plus haut » ; mouvement relatif p. 91 ;
+// « rapide / lent » p. 92 ; le type d'appareil n'est pas fourni par OpenSky : on ne donne que ce qu'on sait, p. 88).
+// own : { lat, lon, hdg (degrés), alt (ft) } ; s : état OpenSky [icao24, indicatif, pays, t, t, lon, lat, alt baro (m),
+// au sol, vitesse (m/s), route vraie, …]. Renvoie null si l'avion est au sol, trop loin (> 15 NM) ou trop haut / bas.
+const rad = d => d * Math.PI / 180;
+function trafficInfo(own, s, lang) {
+  const [, cs, , , , lon, lat, altM, ground, vel, track] = s;
+  if (ground || lat == null || lon == null || altM == null || track == null) return null;
+  const dy = (lat - own.lat) * 60, dx = (lon - own.lon) * 60 * Math.cos(rad(own.lat)); // nautiques
+  const dist = Math.round(Math.hypot(dx, dy)), dz = Math.round((altM * 3.28084 - own.alt) / 100) * 100;
+  if (dist < 1 || dist > 15 || Math.abs(dz) > 3000) return null;
+  const brg = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  const clock = Math.round(((brg - own.hdg) % 360 + 360) % 360 / 30) % 12 || 12;
+  const rel = ((track - own.hdg) % 360 + 540) % 360 - 180; // route du trafic par rapport à notre cap
+  const mv = Math.abs(rel) < 30 ? 1 : Math.abs(rel) > 150 ? 2 : rel > 0 ? 3 : 4;
+  const kt = (vel || 0) * 1.944, spd = kt > 250 ? 1 : kt && kt < 100 ? 2 : 0;
+  const en = lang === 'en';
+  const M = en ? [, 'same direction', 'opposite direction', 'left to right', 'right to left'] : [, 'même sens', 'sens opposé', 'gauche vers droite', 'droite vers gauche'];
+  const S = en ? [, 'fast moving', 'slow moving'] : [, 'rapide', 'lent'];
+  const Z = Math.abs(dz) <= 200 ? (en ? 'same level' : 'même niveau') : `${Math.abs(dz)} ${en ? 'feet' : 'pieds'} ${dz > 0 ? (en ? 'above' : 'plus haut') : (en ? 'below' : 'plus bas')}`;
+  const pos = en ? `${clock} o'clock, ${dist} ${dist > 1 ? 'miles' : 'mile'}` : `${clock} ${clock > 1 ? 'heures' : 'heure'}, ${dist} ${dist > 1 ? 'nautiques' : 'nautique'}`;
+  return { cs: (cs || '').trim(), clock, dist, dz, pos, text: `${en ? 'traffic' : 'trafic'} ${pos}, ${M[mv]}, ${spd ? S[spd] + ', ' : ''}${Z}` };
+}
+
 // Tour ouverte ? Horaires ATS de l'AIP (UTC hiver ; en été, une heure plus tôt). `date` : maintenant.
 function lastSunday(y, m) { const d = new Date(Date.UTC(y, m + 1, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d; }
 function atsOpen(t, date = new Date()) {
@@ -293,4 +318,4 @@ function atsOpen(t, date = new Date()) {
   return plages.some(([a, b]) => (min(a) <= min(b) ? now >= min(a) && now < min(b) : now >= min(a) || now < min(b)));
 }
 
-if (typeof module !== 'undefined') module.exports = { atsOpen, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
+if (typeof module !== 'undefined') module.exports = { atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };

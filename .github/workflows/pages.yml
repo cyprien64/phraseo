@@ -25,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: METAR officiels
         run: curl -sf --max-time 30 "https://aviationweather.gov/api/data/metar?ids=LFBP,LFBZ,LFBT,LFLY,LFRS&format=json" -o metar.json || echo '[]' > metar.json
+      - name: Trafic réel (The OpenSky Network, accès anonyme, 2 crédits par relevé)
+        run: curl -sf --max-time 30 "https://opensky-network.org/api/states/all?lamin=42.8&lomin=-2.2&lamax=47.8&lomax=5.6" -o traffic.json || echo '{}' > traffic.json
       - name: Version des fichiers (le navigateur recharge les nouveaux fichiers après chaque déploiement)
         run: sed -i "s/?v=[0-9a-z]*\"/?v=${GITHUB_SHA::7}\"/g" index.html
       - uses: actions/configure-pages@v5
