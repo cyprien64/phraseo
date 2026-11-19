@@ -130,4 +130,28 @@ function realTerrain(q, t, wx) {
   return { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
 }
 
-if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain };
+// QCM piégeux : mauvaises réponses fabriquées à partir de la bonne (une seule petite erreur), à la place
+// des choix trop faciles (« Roger », réponse tronquée). Chaque piège est revérifié : il doit être refusé.
+const FLIP = { gauche: 'droite', droite: 'gauche', left: 'right', right: 'left', avant: 'après', before: 'after', montez: 'descendez' };
+const KEYNUM = /\b(QNH|piste|runway|niveau|level|cap|heading|transpondeur|squawk|squawking|altitude)\s+\d+[,.]?\s*/i;
+function trickyWrongs(q, shown, rnd = Math.random) {
+  const a = q.answers[0], out = new Set();
+  const swap = a.replace(/\b\d{2,4}\b/, n => { // inversion de deux chiffres voisins différents
+    for (let i = 0; i < n.length - 1; i++) if (n[i] !== n[i + 1]) return n.slice(0, i) + n[i + 1] + n[i] + n.slice(i + 2);
+    return n;
+  });
+  out.add(swap);
+  out.add(a.replace(/\b(gauche|droite|left|right|avant|before)\b/i, w => {
+    const f = FLIP[w.toLowerCase()]; return w[0] === w[0].toUpperCase() ? f[0].toUpperCase() + f.slice(1) : f;
+  }));
+  const drop = a.replace(KEYNUM, m => (m.includes(',') ? ', ' : '')).replace(/\s+,/g, ',').replace(/^,\s*/, '').replace(/,\s*,/g, ',');
+  out.add(drop[0] ? drop[0].toUpperCase() + drop.slice(1) : drop); // élément oublié
+  if (shown) out.add(a.split(shown).join(similarCallsign(shown, rnd))); // indicatif d'un autre avion
+  const traps = [...out].filter(w => w !== a && !q.answers.includes(w) && !check(w, q.answers, q.callsigns).pass)
+    .sort(() => rnd() - 0.5);
+  const hard = q.wrong.filter(w => !/^(Roger|Reçu|Wilco)\b/i.test(w) && w.split(' ').length > 3 && !traps.includes(w));
+  const wrong = [...traps, ...hard, ...q.wrong.filter(w => !traps.includes(w) && !hard.includes(w))].slice(0, 3);
+  return wrong.length === 3 ? { ...q, wrong } : q;
+}
+
+if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs };

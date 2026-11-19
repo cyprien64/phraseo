@@ -67,7 +67,7 @@ function showStats() {
 
 // session : null (entraînement libre), { type: 'exam' } (examen blanc) ou { type: 'defi' } (défi du jour)
 let session = null, timer = null;
-const EXAM_N = 20, EXAM_MIN = 15;
+const EXAM_N = 30, EXAM_MIN = 15, EXAM_OK = 80; // 30 s par question, réussite à 80 %
 const today = () => new Date().toISOString().slice(0, 10);
 // examen et défi en QCM ; l'entraînement ciblé et les leçons gardent le mode choisi
 // (leçon : la dictée devient l'écrit et le pilote fautif le QCM, pour que les réponses comptent dans la progression)
@@ -93,13 +93,14 @@ function start(sess = null) {
     pool = L.qs[0]?.nav ? [...L.qs].sort(navOrder)
       : L.qs.sort(() => Math.random() - 0.5).sort((a, b) => (prog[a.id]?.[2] === 1) - (prog[b.id]?.[2] === 1)).slice(0, 15);
   } else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
-    pool = QUESTIONS.filter(q => langOk(q) && (q.niv || 1) <= 2).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
+    pool = QUESTIONS.filter(langOk).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
   else {
     // la navigation complète (enchaînement) n'apparaît que dans son sujet, sauf en révision
     pool = QUESTIONS.filter(q => (r === 'alpha' || (su === 'all' ? q.cat !== 'nav' || r === 'err' || r === 'due' : (q.cat || 'base') === su)) &&
       (r === 'err' ? isErr(q) && langOk(q) : r === 'due' ? isDue(q) && langOk(q)
         : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && langOk(q))
       && (m === 'qcm' || !q.qcmOnly) && (m !== 'dictee' || (q.atc && !q.q && words(q.atc) >= 8)) && (m !== 'fautif' || (q.atc && !q.q))
+      && (val('niv') !== '4' || !q.atc || q.q || q.niv >= 2 || words(q.atc) >= 7) // Expert+ : messages longs ou combinés
       && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
     if (su === 'nav' && r !== 'err' && r !== 'due') pool.sort(navOrder);
     else if (!chrono) {
@@ -140,6 +141,7 @@ function prepare(q) {
   const shown = short ? abbrev(series) : series;
   let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
   if (terrain) c = realTerrain(c, terrain, wx);
+  if (c.atc && !c.q && !c.elements) c = trickyWrongs(c, shown); // QCM piégeux : une seule petite erreur par choix
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
   if (session) return c; // examen, défi, leçon : pas de piège radio
@@ -151,11 +153,12 @@ function prepare(q) {
   }
   if (modeNow() === 'dictee') return { ...c, answers: [c.atc], dictee: true,
     q: en ? 'Write down the whole message:' : 'Notez le message complet :', src: `${c.src} (dictée du message)` };
-  if ($('#busy').checked && c.atc && c.st && !c.q && Math.random() < 0.3) {
-    const other = Math.random() < 0.5 ? similarCallsign(series) : newCallsign();
+  const xp = val('niv') === '4'; // Expert+ : pièges radio toujours actifs, indicatifs proches
+  if (($('#busy').checked || xp) && c.atc && c.st && !c.q && Math.random() < (xp ? 0.4 : 0.3)) {
+    const other = xp || Math.random() < 0.5 ? similarCallsign(series) : newCallsign();
     return { ...c, atc: c.atc.replace(shown, other), notMine: other };
   }
-  const cut = $('#cuts').checked && c.atc && !c.q && c.cat !== 'atis' && Math.random() < 0.3 && cutMessage(c.atc);
+  const cut = ($('#cuts').checked || xp) && c.atc && !c.q && c.cat !== 'atis' && Math.random() < 0.3 && cutMessage(c.atc);
   if (cut) return { ...c, cut, full: c, qcmOnly: false, niv: 1,
     q: en ? 'The end of the message was cut off. What do you say?' : 'La fin du message a été coupée. Que dites-vous ?',
     answers: [en ? `Say again all after ${cut.word}, ${shown}` : `Répétez tout après ${cut.word}, ${shown}`],
@@ -231,7 +234,8 @@ function tick() {
 
 // ── Voix du contrôleur ──
 // Niveaux : débit de parole, souffle radio (volume du bruit), écoute seule imposée.
-const LEVELS = { 1: { rate: 0.9, hiss: 0 }, 2: { rate: 1.15, hiss: 0.012 }, 3: { rate: 1.35, hiss: 0.03, listen: true } };
+const LEVELS = { 1: { rate: 0.9, hiss: 0 }, 2: { rate: 1.15, hiss: 0.012 }, 3: { rate: 1.35, hiss: 0.03, listen: true },
+  4: { rate: 1.5, hiss: 0.045, listen: true } };
 const NOVELTY = /bells|bubbles|boing|cellos|whisper|zarvox|trinoids|organ|jester|superstar|bad news|good news|wobble|bahh|albert|hysterical|deranged|pipe/i;
 const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
@@ -422,9 +426,9 @@ function end() {
     (extra.exams ||= []).push({ date: today(), pct }); save();
     const ko = session.log.filter(x => !x.good);
     title = 'EXAMEN BLANC';
-    body = `<p class="ctx">${pct >= 75 ? '✅' : '❌'} Note : ${ok} / ${n} (${pct} %) en ${mins} min.
+    body = `<p class="ctx">${pct >= EXAM_OK ? '✅' : '❌'} Note : ${ok} / ${n} (${pct} %) en ${mins} min.
       ${n > total ? `${n - total} question(s) sans réponse (temps écoulé).` : ''}</p>
-      <p class="muted" style="margin:0 20px">Format d'entraînement (${EXAM_N} questions, ${EXAM_MIN} min) : ce n'est pas le format officiel d'un examen.</p>
+      <p class="muted" style="margin:0 20px">Format d'entraînement (${EXAM_N} questions, ${EXAM_MIN} min, réussite à ${EXAM_OK} %) : ce n'est pas le format officiel d'un examen.</p>
       ${ko.length ? `<ol class="review">${ko.map(x => `<li><strong>${esc(x.q.q || x.q.atc)}</strong><br>
         Votre réponse : <span class="extra">${esc(x.chosen)}</span><br>Bonne réponse : <strong>${esc(x.q.answers[0])}</strong>
         <br><span class="src">📘 ${esc(x.q.src)}</span></li>`).join('')}</ol>` : '<p class="ctx">Aucune erreur. Bravo !</p>'}`;
@@ -500,7 +504,7 @@ $('#statsBtn').addEventListener('click', showStats);
 $('#parcoursBtn').addEventListener('click', showParcours);
 fetch('metar.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(j => { METAR = j; if ($('#terrain').value) start(); }).catch(() => {});
 $('#examBtn').addEventListener('click', () => {
-  if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, correction à la fin. Commencer ?`)) start({ type: 'exam' });
+  if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, réussite à ${EXAM_OK} %, correction à la fin. Commencer ?`)) start({ type: 'exam' });
 });
 $('#defiBtn').addEventListener('click', () => start({ type: 'defi' }));
 $('#fichesBtn').addEventListener('click', () => openFiche());

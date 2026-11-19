@@ -95,7 +95,7 @@ function lev(a, b) {
   return d[a.length][b.length];
 }
 
-// Réussi si : indicatif présent, mêmes nombres dans le même ordre, et ≥ 85 % de mots corrects.
+// Réussi si : indicatif présent, mêmes nombres et mots clés dans le même ordre, et ≥ 90 % de mots corrects.
 // `callsign` : indicatif normalisé, ou liste des formes acceptées (complet et abrégé).
 function check(user, answers, callsign = 'fgbcd') {
   const u = normalize(user), cs = [].concat(callsign).sort((a, b) => b.length - a.length);
@@ -109,10 +109,10 @@ function check(user, answers, callsign = 'fgbcd') {
     const ue = strip(u), ee = strip(e);
     // nombres, sens de virage et branches du circuit : la moindre erreur rend la réponse fausse
     const nums = a => a.filter(t => /^\d+$/.test(t)
-      || /^(gauche|droite|left|right|base|arriere|downwind|final|finale|traversier|crosswind|haut|bas|above|below|monte|descends|climb|climbing|descend|descending)$/.test(t)).join(',');
+      || /^(gauche|droite|left|right|base|arriere|downwind|final|finale|traversier|crosswind|haut|bas|above|below|monte|descends|climb|climbing|descend|descending|avant|before|apres|after|attends|wait|waiting|traverse|crossing|remonte|backtracking|numero|number|negatif|negative|affirme|affirm)$/.test(t)).join(',');
     const numbersOk = nums(ue) === nums(ee);
     const score = 1 - lev(ue, ee) / Math.max(ue.length, ee.length, 1);
-    const r = { pass: csOk && numbersOk && score >= 0.85, score, numbersOk, csOk, ans };
+    const r = { pass: csOk && numbersOk && score >= 0.9, score, numbersOk, csOk, ans };
     if (!best || r.pass > best.pass || (r.pass === best.pass && r.score > best.score)) best = r;
   }
   return best;

@@ -3,8 +3,9 @@
 👉 **Accéder au site : https://cyprien64.github.io/phraseo/**
 
 Site statique d'entraînement à la phraséologie aéronautique, 3 modes :
-- **QCM** — choisir le bon collationnement / la bonne réponse ;
-- **Écrit** — taper son collationnement, corrigé automatiquement (indicatif, nombres exacts, ≥ 85 % des mots) ;
+- **QCM** — choisir le bon collationnement / la bonne réponse ; les choix faux sont des pièges fabriqués à partir de
+  la bonne réponse (chiffres inversés, gauche/droite, élément oublié, indicatif d'un autre avion) ;
+- **Écrit** — taper son collationnement, corrigé automatiquement (indicatif, nombres et mots clés exacts — gauche/droite, avant/après, numéro… —, ≥ 90 % des mots) ;
 - **Oral** — parler au micro (reconnaissance vocale du navigateur : **Chrome ou Edge**), le bouton 🔊 lit le message ATC.
 
 Options : **Écoute seule** (le message ATC est masqué et lu à voix haute, comme à la radio),
@@ -18,7 +19,7 @@ urgences et pannes (MAYDAY, PAN PAN, panne d'émission, carburant minimal), expr
 signaux lumineux, premier appel libre / essai radio / répétitions, **AFIS et auto-information**, **phases particulières**
 (repoussage, CTOT, RVSM, faible visibilité, clôture du plan de vol, voltige, largage de parachutistes, péril aviaire),
 **navigation VFR complète** (un vol entier enchaîné : roulage, décollage, SIV, transit, arrivée, circuit, atterrissage). Les exercices à plusieurs éléments
-n'apparaissent qu'aux niveaux Confirmé et Expert.
+n'apparaissent qu'aux niveaux Confirmé, Expert et Expert+.
 
 Réalisme :
 - **🎲 Valeurs aléatoires** : un indicatif par série (affiché dans le bandeau radio), une piste et des codes
@@ -44,7 +45,8 @@ Réalisme :
   sur l'appareil sont utilisées selon le poste.
 
 Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
-**Expert** (débit de contrôleur, parasites, écoute seule imposée). La voix utilise les voix installées sur l'appareil :
+**Expert** (débit de contrôleur, parasites, écoute seule imposée), **Expert+** (débit très rapide, parasites forts,
+messages longs ou combinés seulement, fréquence encombrée avec indicatifs proches et coupures radio toujours actives). La voix utilise les voix installées sur l'appareil :
 pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé).
 Les indicatifs sont écrits en lettres (F-GBCD) et prononcés avec l'alphabet d'épellation (Foxtrot Golf Bravo Charlie Delta).
 En anglais, les nombres sont énoncés selon le manuel DSNA p. 13-16 (« niner », « level one hundred », « decimal one ») ;
@@ -57,7 +59,7 @@ le taux de réussite par langue, règles et phase de vol. La progression reste e
 Apprentissage :
 - **🧭 Parcours progressif** : 14 leçons dans l'ordre (alphabet, bases VFR, sol, premier appel… jusqu'aux urgences) ;
   une leçon se débloque à 80 % d'exercices justes dans la précédente.
-- **🎓 Examen blanc** : 20 questions en QCM, 15 minutes, correction détaillée seulement à la fin (format d'entraînement,
+- **🎓 Examen blanc** : 30 questions en QCM de tous niveaux, 15 minutes, réussite à 80 %, correction détaillée seulement à la fin (format d'entraînement,
   pas le format officiel d'un examen).
 - **🏆 Défi du jour** : 10 questions, les mêmes pour tout le monde le même jour ; historique de vos scores.
 - **📚 Fiches de cours** : collationnement, forme du collationnement, nombres, indicatifs, ordre des éléments,

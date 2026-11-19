@@ -118,7 +118,7 @@ function badges(questions, prog, extra) {
     ['🧯', 'Sang-froid', 'Tous les exercices d’urgence justes', allLast(q => q.cat === 'urgence')],
     ['🔥', 'En série', '10 bonnes réponses d’affilée', (extra.best || 0) >= 10],
     ['⚡', 'Inarrêtable', '25 bonnes réponses d’affilée', (extra.best || 0) >= 25],
-    ['🎓', 'Reçu à l’examen', 'Un examen blanc à 75 % ou plus', exams.some(e => e.pct >= 75)],
+    ['🎓', 'Reçu à l’examen', 'Un examen blanc à 80 % ou plus', exams.some(e => e.pct >= 80)],
     ['📅', 'Assidu', 'Le défi du jour réalisé 7 jours différents', defis.length >= 7],
   ].map(([icon, nom, desc, ok]) => ({ icon, nom, desc, ok }));
 }

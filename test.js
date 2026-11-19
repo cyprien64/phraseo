@@ -45,7 +45,7 @@ assert.deepStrictEqual(diffWords(ref, ref).notes, []);
 console.log('diff OK');
 
 // ── Réalisme : chaque exercice reste juste après tirage aléatoire (indicatif complet ou abrégé) ──
-global.normalize = normalize;
+global.normalize = normalize; global.check = check;
 const R = require('./realism.js');
 let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 for (let k = 0; k < 20; k++) for (const q of QUESTIONS.filter(q => q.regle !== 'alpha' && !q.qcmOnly && !q.elements)) {
@@ -121,3 +121,18 @@ for (const l of ['fr', 'en']) { const n = QUESTIONS.filter(q => q.cat === 'nav' 
   const pr = {}; ls[0].qs.forEach(q => { pr[q.id = q.id || Math.random()] = [1, 0, 1]; });
   const ls2 = L.parcours(QUESTIONS, pr); assert(ls2[1].open && !ls2[2].open && ls2[0].pct === 1); }
 console.log('lot 3 OK');
+
+// ── QCM piégeux : 3 pièges distincts, tous refusés par la correction ──
+let ntr = 0;
+for (let k = 0; k < 10; k++) for (const q of QUESTIONS.filter(q => q.atc && !q.q && !q.elements)) {
+  const cs = R.newCallsign(rnd), shown = k % 2 ? R.abbrev(cs) : cs, v = R.trickyWrongs(R.vary(q, { cs, shown, rnd }), shown, rnd);
+  assert.strictEqual(new Set(v.wrong).size, 3, 'pièges en double : ' + v.wrong);
+  v.wrong.forEach(w => assert(!check(w, v.answers, v.callsigns).pass, 'piège accepté : ' + w + ' / ' + v.answers[0]));
+  if (v.wrong.some(w => !q.wrong.includes(w.split(shown).join('F-GBCD')))) ntr++;
+}
+assert(ntr > 1000, 'pièges générés : ' + ntr);
+{ const t = R.trickyWrongs(R.vary(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.' && !q.cat), { cs: 'F-GXYZ', values: false }), 'F-GXYZ', () => 0.3);
+  assert(t.wrong.includes('Piste 42, je décolle, F-GXYZ') && t.wrong.includes('Je décolle, F-GXYZ'), t.wrong.join(' | ')); }
+assert(!check('Je rappelle base main droite piste 24, F-GBCD', ['Je rappelle vent arrière main droite piste 24, F-GBCD']).pass, 'branche du circuit');
+assert(!check("Je maintiens après point d'attente piste 24, F-GBCD", ["Je maintiens avant point d'attente piste 24, F-GBCD"]).pass, 'avant / après');
+console.log(ntr, 'QCM piégeux OK');
