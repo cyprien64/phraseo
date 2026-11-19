@@ -59,6 +59,9 @@
       <div class="toggles">
         <label class="tog"><input type="checkbox" id="ecoute"> 🎧 Écoute seule (message masqué)</label>
         <label class="tog"><input type="checkbox" id="chrono"> 🛫 Vol complet (ordre chronologique)</label>
+        <label class="tog" title="Indicatif, piste et code transpondeur changent à chaque série"><input type="checkbox" id="random" checked> 🎲 Valeurs aléatoires</label>
+        <label class="tog" title="Certains messages sont pour un autre avion : répondez « Pas pour moi »"><input type="checkbox" id="busy"> 📻 Fréquence encombrée</label>
+        <label class="tog" title="La fin de certains messages est coupée : demandez « Répétez tout après… »"><input type="checkbox" id="cuts"> ✂️ Coupures radio</label>
       </div>
     </section>
 
@@ -74,6 +77,7 @@
   </footer>
 
   <script src="match.js"></script>
+  <script src="realism.js"></script>
   <script src="data.js"></script>
   <script src="data-plus.js"></script>
   <script src="app.js"></script>

@@ -43,3 +43,34 @@ assert.deepStrictEqual(diffWords("Je descends altitude 3000 pieds, piste 23, F-G
 assert.deepStrictEqual(diffWords("je descends altitude 3000 pieds QNH 1009 piste 32", ref).notes, ['indicatif oublié']);
 assert.deepStrictEqual(diffWords(ref, ref).notes, []);
 console.log('diff OK');
+
+// ── Réalisme : chaque exercice reste juste après tirage aléatoire (indicatif complet ou abrégé) ──
+global.normalize = normalize;
+const R = require('./realism.js');
+let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+for (let k = 0; k < 20; k++) for (const q of QUESTIONS.filter(q => q.regle !== 'alpha' && !q.qcmOnly && !q.elements)) {
+  const cs = R.newCallsign(rnd), v = R.vary(q, { cs, shown: k % 2 ? R.abbrev(cs) : cs, rnd });
+  v.answers.forEach(a => assert(check(a, v.answers, v.callsigns).pass, 'référence variée refusée : ' + a));
+  v.wrong.forEach(w => assert(!check(w, v.answers, v.callsigns).pass, 'mauvaise réponse variée acceptée : ' + w + ' / ' + v.answers[0]));
+  assert(!v.wrong.includes(v.answers[0]));
+}
+const v1 = R.vary({ atc: 'F-GBCD, roulez point d\'attente piste 24.', answers: ["Je roule point d'attente piste 24, F-GBCD"], wrong: ["Je roule point d'attente piste 42, F-GBCD"] },
+  { cs: 'F-GXYZ', shown: 'F-YZ', rnd: () => 0.5 });
+assert.strictEqual(v1.atc, "F-YZ, roulez point d'attente piste 91.".replace('91', v1.atc.match(/piste (\d\d)/)[1]));
+assert.strictEqual(v1.wrong[0].match(/piste (\d\d)/)[1], [...v1.atc.match(/piste (\d\d)/)[1]].reverse().join(''), 'la mauvaise piste reste l’inversion');
+assert(check("Je roule point d'attente piste " + v1.atc.match(/piste (\d\d)/)[1] + ', F-GXYZ', v1.answers, v1.callsigns).pass, 'indicatif complet accepté si abrégé');
+assert.strictEqual(R.abbrev('F-GBCD'), 'F-CD');
+assert.strictEqual(R.cutMessage('F-GBCD, roulez', rnd), null);
+const cut = R.cutMessage("F-GBCD, roulez point d'attente piste 24 via Alfa.", () => 0);
+assert.deepStrictEqual(cut, { heard: "F-GBCD, roulez point d'attente", word: "d'attente" });
+const el = QUESTIONS.find(q => q.elements && q.lang === 'fr' && /Guéret, information Bravo/.test(q.answers[0]));
+assert(R.gradeElements(el.answers[0], el.elements, ['fgbcd']).pass);
+assert(R.gradeElements('Fox golf bravo charlie delta, DR 400, parking club, demande consignes de roulage pour Guéret, information bravo', el.elements, ['fgbcd']).pass);
+assert.deepStrictEqual(R.gradeElements('F-GBCD, information Bravo, DR400, parking club, demande roulage pour Guéret', el.elements, ['fgbcd']).notes,
+  ['ordre : « information ATIS » doit venir après « destination »']);
+assert.deepStrictEqual(R.gradeElements('F-GBCD, DR400, demande roulage', el.elements, ['fgbcd']).notes, ['position manquant', 'destination manquant', 'information ATIS manquant']);
+QUESTIONS.filter(q => q.elements).forEach(q => assert(R.gradeElements(q.answers[0], q.elements, ['fgbcd']).pass, 'premier appel de référence refusé : ' + q.answers[0]));
+assert(check('Tower, F-GBCD, radio check one one eight decimal seven', ['Tower, F-GBCD, radio check 118.700']).pass);
+console.log('réalisme OK');
+assert(!/piste 24|runway 24/.test(R.vary(QUESTIONS.find(q => q.ctx === 'En finale piste 24.'), { cs: 'F-GXYZ', rnd: () => 0.5 }).ctx), 'situation variée');console.log('ctx OK');
+{ const w = R.vary(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.'), { cs: 'F-GXYZ', memo: { rw24: '13' } }); assert.strictEqual(w.atc, 'F-GXYZ, piste 13, autorisé décollage, vent 150 degrés 8 nœuds.'); console.log('vent OK'); }

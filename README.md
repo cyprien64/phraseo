@@ -15,7 +15,24 @@ Sujets (filtre « Sujet ») : exercices de base, situations au sol (traversée d
 alignement conditionnel, annulation de décollage), information de trafic, transit VFR et VFR spécial,
 IFR avancé (STAR, attente, approche à vue, approche interrompue ou annulée, contraintes de niveau), ATIS,
 urgences et pannes (MAYDAY, PAN PAN, panne d'émission, carburant minimal), expressions conventionnelles,
-signaux lumineux. Les exercices à plusieurs éléments n'apparaissent qu'aux niveaux Confirmé et Expert.
+signaux lumineux, premier appel libre / essai radio / répétitions. Les exercices à plusieurs éléments
+n'apparaissent qu'aux niveaux Confirmé et Expert.
+
+Réalisme :
+- **🎲 Valeurs aléatoires** : un indicatif par série (affiché dans le bandeau radio), une piste et des codes
+  transpondeur tirés au hasard et gardés pendant toute la série ; le vent tourne avec la piste.
+- **Indicatif abrégé** (F-CD) : utilisé par le contrôleur après le premier échange en « Vol complet », de temps en
+  temps sinon (Manuel p. 18, SERA.14055). Les deux formes sont acceptées en réponse.
+- **📻 Fréquence encombrée** : certains messages sont pour un autre avion, parfois à l'indicatif très proche
+  (Manuel p. 24) — il faut cliquer « Pas pour moi ».
+- **✂️ Coupures radio** : la fin du message est couverte par le bruit ; il faut demander « Répétez tout après… »
+  (SERA.14075 c) 4)), puis collationner le message complet.
+- **« Négatif je répète »** (SERA.14075 d)) : après un collationnement faux en écrit/oral, le contrôleur redonne
+  la clairance et on peut réessayer (essai non compté).
+- **Premier appel libre** : on rédige soi-même la demande ; le site vérifie la présence et l'ordre des éléments
+  du modèle du manuel (p. 45 et 149).
+- **Accents** : en anglais, à partir du niveau Confirmé, les voix anglaises de différentes régions installées
+  sur l'appareil sont utilisées selon le poste.
 
 Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
 **Expert** (débit de contrôleur, parasites, écoute seule imposée). La voix utilise les voix installées sur l'appareil :

@@ -55,8 +55,35 @@ function start() {
     pool.sort(() => Math.random() - 0.5);
   }
   idx = ok = total = streak = 0;
+  series = $('#random').checked ? newCallsign() : 'F-GBCD'; // un indicatif par série, comme un vrai vol
+  memo = {}; // même piste et mêmes codes pendant toute la série
   stats();
   next();
+}
+
+// ── Réalisme : prépare la carte (valeurs aléatoires, indicatif abrégé, message pour un autre avion, coupure) ──
+let series = 'F-GBCD', memo = {};
+function prepare(q) {
+  if (q.regle === 'alpha' || q.prepared) return q;
+  const en = q.lang === 'en', chrono = $('#chrono').checked;
+  // indicatif abrégé : seulement après un premier échange et à l'initiative du contrôleur (Manuel p. 18)
+  const short = !!q.atc && q.cat !== 'atis' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
+  const shown = short ? abbrev(series) : series;
+  let c = vary(q, { cs: series, shown, values: $('#random').checked, memo });
+  if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
+  c.shown = shown; c.prepared = true;
+  if ($('#busy').checked && c.atc && c.st && !c.q && Math.random() < 0.3) {
+    const other = Math.random() < 0.5 ? similarCallsign(series) : newCallsign();
+    return { ...c, atc: c.atc.replace(shown, other), notMine: other };
+  }
+  const cut = $('#cuts').checked && c.atc && !c.q && c.cat !== 'atis' && Math.random() < 0.3 && cutMessage(c.atc);
+  if (cut) return { ...c, cut, full: c, qcmOnly: false, niv: 1,
+    q: en ? 'The end of the message was cut off. What do you say?' : 'La fin du message a été coupée. Que dites-vous ?',
+    answers: [en ? `Say again all after ${cut.word}, ${shown}` : `Répétez tout après ${cut.word}, ${shown}`],
+    wrong: en ? [`Roger, ${shown}`, `Say again all before ${cut.word}, ${shown}`, `Wilco, ${shown}`]
+      : [`Roger, ${shown}`, `Répétez tout avant ${cut.word}, ${shown}`, `Wilco, ${shown}`],
+    src: SERA('SERA.14075 c) 4)') };
+  return c;
 }
 
 function stats() {
@@ -69,18 +96,19 @@ function next() {
   speechSynthesis.cancel(); stopHiss();
   if (!pool.length) { $('#card').innerHTML = '<p class="ctx">Aucune question pour ces réglages.</p>'; return; }
   if (idx >= pool.length) return end();
-  cur = pool[idx++];
+  cur = prepare(pool[idx++]);
   answered = false;
   stats();
   const mode = val('mode'), en = cur.lang === 'en', listen = ($('#ecoute').checked || LEVELS[val('niv')].listen) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
-    <span class="prog">${idx} / ${pool.length}</span></div>
+    <span class="prog"><span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
     <div class="tags"><span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
-    <p class="msg ${listen ? 'hidden' : ''}" id="atc">${esc(cur.atc)}</p>
-    <button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button></div>`;
+    <p class="msg ${listen ? 'hidden' : ''}" id="atc">${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
+    <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button>
+    ${$('#busy').checked ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
   h += `<p class="q">${esc(q)}</p>`;
   if (mode === 'qcm') {
     const opts = [cur.answers[0], ...cur.wrong].sort(() => Math.random() - 0.5);
@@ -95,7 +123,8 @@ function next() {
   h += '<div id="fb"></div>';
   $('#card').innerHTML = h;
 
-  $('#hear')?.addEventListener('click', say);
+  $('#hear')?.addEventListener('click', () => say());
+  $('#nm')?.addEventListener('click', () => { if (!answered) feedback(!!cur.notMine, { nm: true }); });
   $$('.opts button').forEach(b => b.addEventListener('click', () => pick(b)));
   $('#go')?.addEventListener('click', () => grade($('#txt').value));
   $('#mic')?.addEventListener('click', listenMic);
@@ -111,7 +140,9 @@ const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 // Meilleures voix installées d'abord ; chaque poste (Sol, Tour, Approche…) garde « son » contrôleur.
 function pickVoice(lang, st = '') {
-  const good = v => (/premium|enhanced|natural|neural|google/i.test(v.name) ? 2 : 0) + (/GB|FR/.test(v.lang) ? 1 : 0)
+  // en anglais, à partir du niveau Confirmé, toutes les variantes (GB, US, AU, IE, IN…) : accents variés selon le poste
+  const region = lang === 'fr' || val('niv') === '1';
+  const good = v => (/premium|enhanced|natural|neural|google/i.test(v.name) ? 2 : 0) + (region && /GB|FR/.test(v.lang) ? 1 : 0)
     - (/eloquence|^(eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley)\b/i.test(v.voiceURI + ' ' + v.name) ? 3 : 0); // voix peu naturelles (macOS)
   const vs = speechSynthesis.getVoices() // voix « fantaisie » macOS (Bells, Jester/Bouffon…) : noms traduits, on filtre aussi par voiceURI
     .filter(v => v.lang.toLowerCase().startsWith(lang) && !NOVELTY.test(v.name) && !/speech\.synthesis\.voice/.test(v.voiceURI))
@@ -142,11 +173,12 @@ function noise(vol, secs) {
 }
 function stopHiss() { try { hissNode?.stop(); } catch {} hissNode = null; }
 
-function say() {
+// `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée).
+function say(text = cur.cut ? cur.cut.heard : cur.atc) {
   speechSynthesis.cancel(); stopHiss();
-  const L = LEVELS[val('niv')], v = pickVoice(cur.lang, cur.st);
-  const u = new SpeechSynthesisUtterance(speakable(cur.atc, cur.lang));
-  u.lang = cur.lang === 'en' ? 'en-GB' : 'fr-FR';
+  const L = LEVELS[val('niv')], v = pickVoice(cur.lang, cur.st), cut = cur.cut && text === cur.cut.heard;
+  const u = new SpeechSynthesisUtterance(speakable(text, cur.lang));
+  u.lang = v?.lang || (cur.lang === 'en' ? 'en-GB' : 'fr-FR');
   if (v) u.voice = v;
   u.rate = L.rate;
   u.pitch = 0.9 + (hash(cur.st || '') % 3) * 0.08;
@@ -154,6 +186,7 @@ function say() {
   u.onend = u.onerror = () => {
     $('#led')?.classList.remove('tx');
     if (L.hiss) { stopHiss(); noise(L.hiss * 6, 0.12); } // squelch de fin d'émission
+    if (cut) noise(0.15, 1.2); // la fin du message est couverte par le bruit
   };
   if (L.hiss) { noise(L.hiss * 6, 0.08); hissNode = noise(L.hiss); } // alternat + souffle porteuse
   setTimeout(() => speechSynthesis.speak(u), L.hiss ? 150 : 0);
@@ -162,8 +195,8 @@ speechSynthesis.onvoiceschanged = () => {}; // force le chargement de la liste d
 
 function pick(b) {
   if (answered) return;
-  const good = b.dataset.o === cur.answers[0];
-  $$('.opts button').forEach(x => { x.disabled = true; if (x.dataset.o === cur.answers[0]) x.classList.add('good'); });
+  const good = !cur.notMine && b.dataset.o === cur.answers[0];
+  $$('.opts button').forEach(x => { x.disabled = true; if (!cur.notMine && x.dataset.o === cur.answers[0]) x.classList.add('good'); });
   if (!good) b.classList.add('bad');
   feedback(good);
 }
@@ -184,29 +217,57 @@ function grade(text) {
     const w = s => s.toLowerCase().replace(/[^a-z]/g, '');
     return feedback(cur.answers.some(a => w(a) === w(text)), { said: text });
   }
-  const r = check(text, cur.answers);
-  feedback(r.pass, { said: text, diff: diffWords(text, r.ans), ans: r.ans });
+  if (cur.notMine) return feedback(false, { said: text });
+  if (cur.elements) { // premier appel libre : éléments obligatoires dans l'ordre
+    const r = gradeElements(text, cur.elements, cur.callsigns);
+    return feedback(r.pass, { said: text, notes: r.notes });
+  }
+  const r = check(text, cur.answers, cur.callsigns);
+  const diff = diffWords(text, r.ans, cur.callsigns);
+  feedback(r.pass, { said: text, diff, notes: diff.notes, ans: r.ans });
 }
 
 const paint = (cs, cls) => cs.map(c => c.bad ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text)).join(' ');
 
-function feedback(good, { said = '', diff, ans = cur.answers[0] } = {}) {
+function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm = false } = {}) {
   answered = true;
-  record(good);
-  total++; if (good) { ok++; streak++; } else streak = 0;
+  const counted = !cur.retry;
+  if (counted) {
+    if (!cur.notMine && !cur.cut) record(good); // les cartes « autre avion » et « coupure » ne touchent pas la progression
+    total++; if (good) { ok++; streak++; } else streak = 0;
+  }
   stats();
   $('#atc')?.classList.remove('hidden');
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
+  let head = good ? '✅ Correct' : '❌ À revoir';
+  if (cur.notMine) head = good ? `✅ Bien vu : ce message était pour ${cur.notMine}, on ne répond pas.`
+    : `❌ Ce message était pour ${cur.notMine}, pas pour vous (${cur.shown}) : il ne fallait pas répondre.`;
+  else if (nm) head = `❌ Ce message était pour vous (${cur.shown}) : il fallait répondre.`;
+  if (cur.retry) head = `2e essai (non compté) : ${head}`;
+  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && cur.atc && val('mode') !== 'qcm';
   $('#fb').innerHTML = `<div class="fb ${good ? 'ok' : 'ko'}">
-    <p><strong>${good ? '✅ Correct' : '❌ À revoir'}</strong></p>
-    ${diff?.notes.length ? `<ul class="notes">${diff.notes.slice(0, 5).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    <p><strong>${esc(head)}</strong></p>
+    ${notes.length ? `<ul class="notes">${notes.slice(0, 6).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
     ${said ? `<p>Votre réponse : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
-    <p>Réponse attendue : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>
-    <p class="src">📘 Source : ${esc(cur.src)}</p>
-    <div class="row"><button class="primary" id="nx">Suivant →</button></div></div>`;
+    ${cur.notMine ? '' : `<p>Réponse attendue : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>`}
+    <p class="src">📘 Source : ${esc(cur.notMine ? `${MANUEL(24)} (confusion d’indicatifs)` : cur.src)}</p>
+    <div class="row">${canRetry ? '<button id="again1">🔁 Le contrôleur corrige (« Négatif je répète »)</button>' : ''}
+    <button class="primary" id="nx">Suivant →</button></div></div>`;
+  if (cur.cut) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
+  $('#again1')?.addEventListener('click', retry);
   $('#nx').addEventListener('click', next);
   $('#nx').focus();
+}
+
+// SERA.14075 d) : « NÉGATIF JE RÉPÈTE » suivi de la version correcte ; nouvel essai non compté.
+function retry() {
+  cur.retry = true; answered = false;
+  const body = cur.atc.replace(/^[^,]+,\s*/, '');
+  say(cur.lang === 'en' ? `${cur.shown}, negative I say again, ${body}` : `${cur.shown}, négatif je répète, ${body}`);
+  $('#fb').innerHTML = `<p class="muted">${cur.lang === 'en' ? 'Negative I say again…' : 'Négatif je répète…'} Collationnez à nouveau (essai non compté).</p>`;
+  if ($('#txt')) { $('#txt').value = ''; $('#go').disabled = false; $('#txt').focus(); }
+  if ($('#mic')) { $('#mic').disabled = false; $('#mic').textContent = '🎤 Appuyer pour parler'; }
 }
 
 function end() {

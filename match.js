@@ -60,7 +60,8 @@ function evalNum(g) {
 
 function normalize(s) {
   const toks = s.toLowerCase().replace(/\b(?:[dljmnst]|qu)['’]/g, '').replace(/œ/g, 'oe').normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/(\d)[.,](\d)/g, '$1$2').replace(/-/g, '')
+    // fréquences : 118.700 s'énonce « one one eight decimal seven » (Manuel p. 13) -> mêmes chiffres « 1187 »
+    .replace(/(\d)[.,](\d)00(?!\d)/g, '$1$2').replace(/(\d)[.,](\d)/g, '$1$2').replace(/-/g, '')
     .replace(/([a-z])(\d)/g, '$1 $2').replace(/(\d)([a-z])/g, '$1 $2')
     .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean)
     .flatMap(t => ABBR[t] ? ABBR[t].split(' ') : [t])
@@ -95,13 +96,15 @@ function lev(a, b) {
 }
 
 // Réussi si : indicatif présent, mêmes nombres dans le même ordre, et ≥ 85 % de mots corrects.
+// `callsign` : indicatif normalisé, ou liste des formes acceptées (complet et abrégé).
 function check(user, answers, callsign = 'fgbcd') {
-  const u = normalize(user);
+  const u = normalize(user), cs = [].concat(callsign).sort((a, b) => b.length - a.length);
   let best = null;
   for (const ans of answers) {
     const e = normalize(ans);
     // l'indicatif épelé peut être collé à une lettre voisine (« via Alfa, F-GBCD » -> "afgbcd")
-    const has = a => a.some(t => t.includes(callsign)), strip = a => a.map(t => t.replace(callsign, '')).filter(Boolean);
+    const has = a => a.some(t => cs.some(c => t.includes(c)));
+    const strip = a => a.map(t => cs.reduce((x, c) => x.replace(c, ''), t)).filter(Boolean);
     const csOk = !has(e) || has(u);
     const ue = strip(u), ee = strip(e);
     // nombres, sens de virage et branches du circuit : la moindre erreur rend la réponse fausse
@@ -129,6 +132,7 @@ function chunks(s) {
 
 // Correction mot à mot : marque `bad` sur les mots manquants/faux/en trop et produit des remarques lisibles.
 function diffWords(user, expected, callsign = 'fgbcd') {
+  const cs = [].concat(callsign);
   const E = chunks(expected), Uall = chunks(user), U = Uall.filter(c => c.key);
   const n = E.length, m = U.length;
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
@@ -160,7 +164,7 @@ function diffWords(user, expected, callsign = 'fgbcd') {
     if (o.u && o.t !== '=') o.u.bad = true;
     const label = o.e && /^\d+$/.test(o.e.key) && prev ? prev + ' ' : '';
     if (o.t === '-') {
-      if (o.e.key.includes(callsign)) { flush(); notes.push('indicatif oublié'); }
+      if (cs.some(c => o.e.key.includes(c))) { flush(); notes.push('indicatif oublié'); }
       else missing.push(missing.length ? clean(o.e.text) : label + clean(o.e.text));
     } else {
       flush();
