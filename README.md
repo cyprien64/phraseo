@@ -16,7 +16,8 @@ alignement conditionnel, annulation de décollage), information de trafic, trans
 IFR avancé (STAR, attente, approche à vue, approche interrompue ou annulée, contraintes de niveau), ATIS,
 urgences et pannes (MAYDAY, PAN PAN, panne d'émission, carburant minimal), expressions conventionnelles,
 signaux lumineux, premier appel libre / essai radio / répétitions, **AFIS et auto-information**, **phases particulières**
-(repoussage, CTOT, RVSM, faible visibilité, clôture du plan de vol, voltige, largage de parachutistes, péril aviaire). Les exercices à plusieurs éléments
+(repoussage, CTOT, RVSM, faible visibilité, clôture du plan de vol, voltige, largage de parachutistes, péril aviaire),
+**navigation VFR complète** (un vol entier enchaîné : roulage, décollage, SIV, transit, arrivée, circuit, atterrissage). Les exercices à plusieurs éléments
 n'apparaissent qu'aux niveaux Confirmé et Expert.
 
 Réalisme :
@@ -32,6 +33,13 @@ Réalisme :
   la clairance et on peut réessayer (essai non compté).
 - **Premier appel libre** : on rédige soi-même la demande ; le site vérifie la présence et l'ordre des éléments
   du modèle du manuel (p. 45 et 149).
+- **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes) : nom radio, pistes et fréquences Tour / Sol de l'AIP
+  (AD 2, AIRAC du 29/10/2026) ; **météo réelle** : le dernier METAR est affiché, la piste est choisie face au vent, et le
+  vent et le QNH des messages sont ceux du METAR (vent variable : vent de l'exercice ; METAR de plus de 3 h : ignoré).
+  Les METAR viennent d'aviationweather.gov (NOAA), récupérés par GitHub toutes les 30 minutes (`.github/workflows/pages.yml`).
+  Les points de report, l'AFIS et l'ATIS restent fictifs.
+- **🕵️ Pilote fautif** (mode) : un pilote collationne, juste ou faux ; il faut dire s'il s'est trompé, puis la correction
+  montre l'erreur mot à mot.
 - **Accents** : en anglais, à partir du niveau Confirmé, les voix anglaises de différentes régions installées
   sur l'appareil sont utilisées selon le poste.
 
@@ -47,6 +55,8 @@ Suivi : les questions ratées reviennent plus souvent et sont regroupées dans *
 le taux de réussite par langue, règles et phase de vol. La progression reste enregistrée dans le navigateur de l'appareil.
 
 Apprentissage :
+- **🧭 Parcours progressif** : 14 leçons dans l'ordre (alphabet, bases VFR, sol, premier appel… jusqu'aux urgences) ;
+  une leçon se débloque à 80 % d'exercices justes dans la précédente.
 - **🎓 Examen blanc** : 20 questions en QCM, 15 minutes, correction détaillée seulement à la fin (format d'entraînement,
   pas le format officiel d'un examen).
 - **🏆 Défi du jour** : 10 questions, les mêmes pour tout le monde le même jour ; historique de vos scores.
@@ -83,7 +93,9 @@ Chaque exercice a été vérifié et indique la page ou l'article exact :
   aérodromes, JORF du 2 août 2019) et **AIP France ENR 1.2** (cycle du 29 octobre 2026). Aucun texte officiel ne fixe
   la formulation exacte des messages d'auto-information : le site interroge donc sur les règles, pas sur des phrases.
 
-Le Doc 9432 de l'OACI (payant) n'a pas été utilisé. Édition du manuel DSNA vérifiée le 19/11/2026 : la 10e reste la plus récente. Indicatif, aérodromes, fréquences et points de report sont fictifs.
+Le Doc 9432 de l'OACI (payant) n'a pas été utilisé. Édition du manuel DSNA vérifiée le 19/11/2026 : la 10e reste la plus récente. Hors option « Terrain réel », indicatif, aérodromes, fréquences et points de report sont fictifs.
+- Terrains réels : **AIP France, AD 2** de chaque terrain (AD 2.12 pistes, AD 2.18 fréquences), AIRAC du 29 octobre 2026 ;
+  METAR : **aviationweather.gov** (NOAA).
 **Outil d'entraînement : seuls les documents officiels en vigueur font foi.** Vérifier qu'une édition plus récente
 du manuel n'est pas parue (site du SIA ou du ministère).
 
@@ -92,5 +104,5 @@ du manuel n'est pas parue (site du SIA ou du ministère).
 
 ## Mise en ligne sur GitHub Pages
 1. Créer un dépôt sur github.com et y pousser ces fichiers.
-2. Settings → Pages → Source : *Deploy from a branch*, branche `main`, dossier `/ (root)`.
+2. Settings → Pages → Source : *GitHub Actions* (le workflow `.github/workflows/pages.yml` publie le site et les METAR).
 3. Le site est en ligne sur `https://<utilisateur>.github.io/<dépôt>/` (HTTPS requis pour le micro).

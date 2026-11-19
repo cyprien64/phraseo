@@ -17,7 +17,7 @@ function leitner(p, good, now = Date.now()) {
 const isDueP = (p, now = Date.now()) => !!p && (p[4] || 0) <= now; // anciennes progressions sans échéance : à revoir
 
 // « Pourquoi ? » : règles qui s'appliquent à l'exercice, avec leur source. `fiche` = fiche de cours liée.
-const FICHE_CAT = { urgence: 'urgence', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre', afis: 'afis', phases: 'collat' };
+const FICHE_CAT = { urgence: 'urgence', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre', afis: 'afis', phases: 'collat', nav: 'collat' };
 function whyRules(q) {
   const out = [], txt = `${q.atc} ${q.answers[0]}`, add = (texte, src) => out.push({ texte, src });
   if (q.cat === 'afis') { // l'AFIS informe, il ne délivre pas de clairance
@@ -123,4 +123,32 @@ function badges(questions, prog, extra) {
   ].map(([icon, nom, desc, ok]) => ({ icon, nom, desc, ok }));
 }
 
-if (typeof module !== 'undefined') module.exports = { leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, cible, BOX_DAYS, DAY };
+// Parcours progressif : leçons dans l'ordre ; la suivante se débloque à 80 % d'exercices justes (dernière réponse).
+const SEUIL = 0.8;
+const PARCOURS = [
+  ['Alphabet OACI', q => q.regle === 'alpha'],
+  ['Bases VFR (français)', q => !q.cat && q.regle === 'vfr' && q.lang === 'fr'],
+  ['Bases VFR (anglais)', q => !q.cat && q.regle === 'vfr' && q.lang === 'en'],
+  ['Situations au sol', q => q.cat === 'sol'],
+  ['Premier appel, essai radio, répétitions', q => q.cat === 'appel'],
+  ['Expressions conventionnelles', q => q.cat === 'expr'],
+  ['Information de trafic', q => q.cat === 'trafic'],
+  ['AFIS et auto-information', q => q.cat === 'afis'],
+  ['Transit VFR et VFR spécial', q => q.cat === 'transit'],
+  ['Navigation VFR complète', q => q.cat === 'nav'],
+  ['Bases IFR', q => !q.cat && q.regle === 'ifr'],
+  ['IFR avancé', q => q.cat === 'ifr'],
+  ['Phases particulières', q => q.cat === 'phases'],
+  ['Urgences et pannes', q => q.cat === 'urgence'],
+];
+function parcours(questions, prog) {
+  let open = true;
+  return PARCOURS.map(([titre, f]) => {
+    const qs = questions.filter(f), done = qs.filter(q => prog[q.id]?.[2] === 1).length;
+    const pct = qs.length ? done / qs.length : 1, l = { titre, qs, done, pct, open };
+    open = open && pct >= SEUIL;
+    return l;
+  }).filter(l => l.qs.length);
+}
+
+if (typeof module !== 'undefined') module.exports = { leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, cible, parcours, BOX_DAYS, DAY };

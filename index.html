@@ -19,6 +19,7 @@
     </div>
   </header>
   <nav class="tools">
+    <button id="parcoursBtn">🧭 Parcours</button>
     <button id="examBtn">🎓 Examen blanc</button>
     <button id="defiBtn">🏆 Défi du jour</button>
     <button id="fichesBtn">📚 Fiches de cours</button>
@@ -45,6 +46,14 @@
     <div id="glossBody" aria-live="polite"></div>
     <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
       <button class="printBtn">🖨️ Imprimer / PDF</button></div>
+  </dialog>
+
+  <dialog id="parcours" aria-labelledby="parcoursT">
+    <h2 id="parcoursT">🧭 Parcours progressif</h2>
+    <p class="muted">Une leçon se débloque quand 80 % des exercices de la précédente sont justes à votre dernière réponse
+      (selon la langue choisie).</p>
+    <ol id="parcoursBody" class="lecons"></ol>
+    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
   </dialog>
 
   <dialog id="stats" aria-labelledby="statsT">
@@ -80,6 +89,7 @@
         <input type="radio" name="mode" id="m-ecrit" value="ecrit"><label for="m-ecrit">✍️ Écrit</label>
         <input type="radio" name="mode" id="m-oral" value="oral"><label for="m-oral">🎤 Oral</label>
         <input type="radio" name="mode" id="m-dictee" value="dictee"><label for="m-dictee" title="Écoutez un message long et notez-le en entier">📝 Dictée</label>
+        <input type="radio" name="mode" id="m-fautif" value="fautif"><label for="m-fautif" title="Un pilote collationne : trouvez s’il s’est trompé">🕵️ Pilote fautif</label>
       </fieldset>
       <fieldset class="seg"><legend>Niveau</legend>
         <input type="radio" name="niv" id="n-1" value="1" checked><label for="n-1" title="Voix lente, sans parasites, messages simples">Débutant</label>
@@ -88,6 +98,9 @@
       </fieldset>
       <label class="sujet">Sujet
         <select id="sujet"><option value="all">Tous les sujets</option></select>
+      </label>
+      <label class="sujet" title="Nom, piste et fréquences de l'AIP ; vent et QNH du dernier METAR">Terrain
+        <select id="terrain"><option value="">Fictif (Saint-Exémery)</option></select>
       </label>
       <div class="toggles">
         <label class="tog"><input type="checkbox" id="ecoute"> 🎧 Écoute seule (message masqué)</label>
@@ -106,7 +119,7 @@
   <footer class="muted">
     Phraséologie vérifiée sur le Manuel de phraséologie DSNA à l'usage de la CAG (10e édition, 15 avril 2023) et le
     Règlement (UE) 923/2012 SERA (version consolidée du 1er mai 2025) ; la page ou l'article est indiqué sous chaque correction.
-    Indicatif, terrains et fréquences fictifs. Outil d'entraînement : seuls les documents officiels en vigueur font foi.
+    Terrains réels : AIP France (AD 2, AIRAC du 29/10/2026) et METAR officiels (aviationweather.gov). Sinon, terrains et fréquences fictifs. Outil d'entraînement : seuls les documents officiels en vigueur font foi.
   </footer>
   <div id="print" aria-hidden="true"></div>
 
@@ -115,6 +128,7 @@
   <script src="data.js"></script>
   <script src="data-plus.js"></script>
   <script src="data-lot2.js"></script>
+  <script src="data-lot3.js"></script>
   <script src="courses.js"></script>
   <script src="learn.js"></script>
   <script src="app.js"></script>

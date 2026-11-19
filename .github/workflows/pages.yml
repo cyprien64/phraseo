@@ -1,0 +1,33 @@
+# Publie le site sur GitHub Pages à chaque push, et toutes les 30 minutes avec les derniers METAR officiels
+# (aviationweather.gov, NOAA). Le navigateur ne peut pas les lire directement (pas d'en-tête CORS).
+# Liste des terrains : la même que TERRAINS dans data-lot3.js.
+name: Pages
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: METAR officiels
+        run: curl -sf --max-time 30 "https://aviationweather.gov/api/data/metar?ids=LFBP,LFBZ,LFBT,LFLY,LFRS&format=json" -o metar.json || echo '[]' > metar.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

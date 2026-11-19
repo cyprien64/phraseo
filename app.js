@@ -69,8 +69,14 @@ function showStats() {
 let session = null, timer = null;
 const EXAM_N = 20, EXAM_MIN = 15;
 const today = () => new Date().toISOString().slice(0, 10);
-// examen et défi en QCM ; l'entraînement ciblé garde le mode choisi
-const modeNow = () => session && session.type !== 'cible' ? 'qcm' : val('mode');
+// examen et défi en QCM ; l'entraînement ciblé et les leçons gardent le mode choisi
+// (leçon : la dictée devient l'écrit et le pilote fautif le QCM, pour que les réponses comptent dans la progression)
+const modeNow = () => {
+  const m = val('mode');
+  if (session && !/cible|lecon/.test(session.type)) return 'qcm';
+  return session?.type === 'lecon' ? ({ dictee: 'ecrit', fautif: 'qcm' }[m] || m) : m;
+};
+const navOrder = (a, b) => b.lang.localeCompare(a.lang) || a.nav - b.nav; // français puis anglais, dans l'ordre du vol
 const words = s => s.split(' ').length;
 
 function start(sess = null) {
@@ -81,15 +87,22 @@ function start(sess = null) {
   else if (session?.type === 'cible') // entraînement ciblé sur un type d'erreur du bilan
     pool = cible(QUESTIONS, session.kind).filter(q => langOk(q) && (m === 'qcm' || !q.qcmOnly) && (q.niv || 1) <= +val('niv'))
       .sort(() => Math.random() - 0.5).slice(0, 15);
-  else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
+  else if (session?.type === 'lecon') { // parcours : exercices pas encore réussis d'abord
+    const L = parcours(QUESTIONS.filter(langOk), prog)[session.n];
+    session.titre = L.titre;
+    pool = L.qs[0]?.nav ? [...L.qs].sort(navOrder)
+      : L.qs.sort(() => Math.random() - 0.5).sort((a, b) => (prog[a.id]?.[2] === 1) - (prog[b.id]?.[2] === 1)).slice(0, 15);
+  } else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
     pool = QUESTIONS.filter(q => langOk(q) && (q.niv || 1) <= 2).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
   else {
-    pool = QUESTIONS.filter(q => (su === 'all' || r === 'alpha' || (q.cat || 'base') === su) &&
+    // la navigation complète (enchaînement) n'apparaît que dans son sujet, sauf en révision
+    pool = QUESTIONS.filter(q => (r === 'alpha' || (su === 'all' ? q.cat !== 'nav' || r === 'err' || r === 'due' : (q.cat || 'base') === su)) &&
       (r === 'err' ? isErr(q) && langOk(q) : r === 'due' ? isDue(q) && langOk(q)
         : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && langOk(q))
-      && (m === 'qcm' || !q.qcmOnly) && (m !== 'dictee' || (q.atc && !q.q && words(q.atc) >= 8))
+      && (m === 'qcm' || !q.qcmOnly) && (m !== 'dictee' || (q.atc && !q.q && words(q.atc) >= 8)) && (m !== 'fautif' || (q.atc && !q.q))
       && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
-    if (!chrono) {
+    if (su === 'nav' && r !== 'err' && r !== 'due') pool.sort(navOrder);
+    else if (!chrono) {
       if (r !== 'err' && r !== 'due') pool = pool.concat(pool.filter(isErr)); // les questions ratées reviennent deux fois plus souvent
       pool.sort(() => Math.random() - 0.5);
     }
@@ -102,22 +115,40 @@ function start(sess = null) {
   // un indicatif par série, comme un vrai vol ; F-GBCD pour le défi du jour (identique pour tous)
   series = $('#random').checked && session?.type !== 'defi' ? newCallsign() : 'F-GBCD';
   memo = {}; // même piste et mêmes codes pendant toute la série
+  // terrain réel (pas pour le défi, identique pour tous) : piste face au vent du dernier METAR
+  terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === $('#terrain').value) || null;
+  wx = terrain && wxOf(terrain.icao);
+  if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir);
   stats();
   next();
 }
 
 // ── Réalisme : prépare la carte (valeurs aléatoires, indicatif abrégé, message pour un autre avion, coupure) ──
-let series = 'F-GBCD', memo = {};
+let series = 'F-GBCD', memo = {}, terrain = null, wx = null;
+// METAR officiels récupérés par GitHub toutes les 30 min (metar.json, format aviationweather.gov) ; trop ancien = ignoré
+let METAR = [];
+function wxOf(icao) {
+  const m = Array.isArray(METAR) && METAR.find(x => x.icaoId === icao);
+  if (!m || Date.now() / 1000 - m.obsTime > 3 * 3600) return null;
+  return { wdir: m.wdir, wspd: m.wspd, qnh: Math.round(m.altim), raw: m.rawOb };
+}
 function prepare(q) {
   if (q.regle === 'alpha' || q.prepared) return q;
   const en = q.lang === 'en', chrono = $('#chrono').checked;
   // indicatif abrégé : seulement après un premier échange et à l'initiative du contrôleur (Manuel p. 18)
-  const short = !session && !!q.atc && q.cat !== 'atis' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
+  const short = !session && !!q.atc && q.cat !== 'atis' && q.cat !== 'nav' && !q.elements && q.st && (chrono ? idx > 1 : Math.random() < 0.3);
   const shown = short ? abbrev(series) : series;
-  let c = vary(q, { cs: series, shown, values: $('#random').checked && session?.type !== 'defi', memo });
+  let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
+  if (terrain) c = realTerrain(c, terrain, wx);
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
-  if (session) return c; // examen et défi : pas de piège radio
+  if (session) return c; // examen, défi, leçon : pas de piège radio
+  if (modeNow() === 'fautif') { // le pilote collationne, juste ou faux : à vous de trouver
+    const bad = Math.random() < 0.5;
+    return { ...c, orig: c, pilote: bad ? c.wrong[Math.floor(Math.random() * c.wrong.length)] : c.answers[0],
+      q: en ? 'Is the pilot’s readback correct?' : 'Le collationnement du pilote est-il correct ?',
+      answers: [bad ? 'Incorrect' : 'Correct'], wrong: [bad ? 'Correct' : 'Incorrect'] };
+  }
   if (modeNow() === 'dictee') return { ...c, answers: [c.atc], dictee: true,
     q: en ? 'Write down the whole message:' : 'Notez le message complet :', src: `${c.src} (dictée du message)` };
   if ($('#busy').checked && c.atc && c.st && !c.q && Math.random() < 0.3) {
@@ -149,19 +180,22 @@ function next() {
   cur = prepare(pool[idx++]);
   answered = false;
   stats();
-  const mode = modeNow(), en = cur.lang === 'en';
+  const mode = cur.qcmOnly || cur.pilote ? 'qcm' : modeNow(), en = cur.lang === 'en';
   const listen = ($('#ecoute').checked || LEVELS[val('niv')].listen || cur.dictee) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
-  const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc'
+  const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc' : session.type === 'lecon' ? `🧭 ${esc(session.titre)}`
     : session.type === 'cible' ? `🎯 ${esc(CONSEILS[session.kind]?.[0] || 'Entraînement ciblé')}` : `🏆 Défi du ${today()}`}</span>` : '';
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
     <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
     <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
+    ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? esc(wx.raw) : 'METAR indisponible : vent et QNH de l’exercice.'}
+      <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}</span></p>` : ''}
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
     <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button>
-    ${$('#busy').checked ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
+    ${$('#busy').checked && !cur.pilote ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
+  if (cur.pilote) h += `<div class="bubble pilot"><div class="who">${en ? 'Pilot' : 'Pilote'}</div><p class="msg">${esc(cur.pilote)}</p></div>`;
   h += `<p class="q">${esc(q)}</p>`;
   if (mode === 'qcm') {
     const opts = [cur.answers[0], ...cur.wrong].sort(() => Math.random() - 0.5);
@@ -261,7 +295,10 @@ function pick(b) {
   const good = !cur.notMine && b.dataset.o === cur.answers[0];
   $$('.opts button').forEach(x => { x.disabled = true; if (!cur.notMine && x.dataset.o === cur.answers[0]) x.classList.add('good'); });
   if (!good) b.classList.add('bad');
-  feedback(good, { chosen: b.dataset.o });
+  if (!cur.pilote) return feedback(good, { chosen: b.dataset.o });
+  const ans = check(cur.pilote, cur.orig.answers, cur.callsigns).ans; // variante la plus proche
+  const d = cur.pilote === ans ? null : diffWords(cur.pilote, ans, cur.callsigns);
+  feedback(good, { chosen: b.dataset.o, said: cur.pilote, diff: d, notes: d?.notes || [], ans });
 }
 
 function listenMic() {
@@ -325,10 +362,10 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   answered = true;
   const counted = !cur.retry;
   if (counted) {
-    if (!cur.notMine && !cur.cut && !cur.dictee) record(good); // ces cartes ne touchent pas la révision
+    if (!cur.notMine && !cur.cut && !cur.dictee && !cur.pilote) record(good); // ces cartes ne touchent pas la révision
     total++; if (good) { ok++; streak++; } else streak = 0;
     extra.best = Math.max(extra.best || 0, streak);
-    if (!good) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
+    if (!good && !cur.pilote) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
     save();
   }
   if (session) session.log.push({ q: cur, good, chosen: chosen || said });
@@ -342,13 +379,15 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     : `❌ Ce message était pour ${cur.notMine}, pas pour vous (${cur.shown}) : il ne fallait pas répondre.`;
   else if (nm) head = `❌ Ce message était pour vous (${cur.shown}) : il fallait répondre.`;
   if (cur.retry) head = `2e essai (non compté) : ${head}`;
-  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && cur.atc && modeNow() !== 'qcm';
-  const why = whyRules(cur), fiche = FICHES.find(f => f.id === why.fiche);
+  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && !cur.pilote && cur.atc && modeNow() !== 'qcm';
+  if (cur.pilote) head = good ? `✅ Bien vu : le collationnement était ${cur.answers[0] === 'Correct' ? 'correct' : 'faux'}.`
+    : `❌ Le collationnement était ${cur.answers[0] === 'Correct' ? 'correct' : 'faux'}.`;
+  const why = whyRules(cur.orig || cur), fiche = FICHES.find(f => f.id === why.fiche);
   $('#fb').innerHTML = `<div class="fb ${good ? 'ok' : 'ko'}">
     <p><strong>${esc(head)}</strong></p>
     ${notes.length ? `<ul class="notes">${notes.slice(0, 6).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-    ${said ? `<p>Votre réponse : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
-    ${cur.notMine ? '' : `<p>Réponse attendue : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>`}
+    ${said ? `<p>${cur.pilote ? 'Le pilote a dit' : 'Votre réponse'} : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
+    ${cur.notMine ? '' : `<p>${cur.pilote ? 'Collationnement attendu' : 'Réponse attendue'} : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>`}
     <p class="src">📘 Source : ${esc(cur.notMine ? `${MANUEL(24)} (confusion d’indicatifs)` : cur.src)}</p>
     <details class="why"><summary>❓ Pourquoi ?</summary><ul>${why.regles.map(r => `<li>${esc(r.texte)} <span class="src">(${esc(r.src)})</span></li>`).join('')}</ul>
       ${fiche ? `<button class="ghost" data-fiche="${fiche.id}">📚 Fiche : ${esc(fiche.titre)}</button>` : ''}</details>
@@ -395,6 +434,13 @@ function end() {
     title = 'DÉFI DU JOUR';
     body = `<p class="ctx">🏆 Défi du ${today()} : ${ok} / ${total}. Revenez demain pour un nouveau défi.</p>
       <p class="muted" style="margin:0 20px">Vos derniers défis : ${esc(last)}</p>`;
+  } else if (session?.type === 'lecon') {
+    const ls = parcours(QUESTIONS.filter(q => val('lang') === 'all' || q.regle === 'alpha' || q.lang === val('lang')), prog);
+    const L = ls[session.n], nx = ls[session.n + 1];
+    title = 'PARCOURS';
+    body = `<p class="ctx">🧭 ${esc(L.titre)} : ${ok} / ${total} dans cette série. Leçon réussie à ${Math.round(100 * L.pct)} %
+      (${L.done} / ${L.qs.length} exercices justes).</p><p class="muted" style="margin:0 20px">${nx ? (nx.open ? `✅ Leçon suivante débloquée : ${esc(nx.titre)}.`
+      : `Il faut 80 % pour débloquer « ${esc(nx.titre)} ».`) : 'Dernière leçon du parcours.'}</p>`;
   } else if (session?.type === 'cible') {
     title = 'ENTRAÎNEMENT CIBLÉ';
     body = `<p class="ctx">🎯 ${esc(CONSEILS[session.kind]?.[0] || '')} : ${ok} / ${total} (${pct} %).</p>`;
@@ -412,6 +458,17 @@ function openFiche(id = FICHES[0].id) {
   $('#ficheBody').innerHTML = `<h3>${esc(f.titre)}</h3><ul>${f.points.map(p => `<li>${esc(p)}</li>`).join('')}</ul><p class="src">📘 ${esc(f.src)}</p>`;
   $$('#ficheNav button').forEach(b => b.addEventListener('click', () => openFiche(b.dataset.id)));
   if (!$('#fiches').open) $('#fiches').showModal();
+}
+
+function showParcours() {
+  const l = val('lang'), ls = parcours(QUESTIONS.filter(q => l === 'all' || q.regle === 'alpha' || q.lang === l), prog);
+  $('#parcoursBody').innerHTML = ls.map((x, i) => `<li class="${x.open ? '' : 'lock'}">
+    <span>${x.pct >= SEUIL ? '✅' : x.open ? '▶️' : '🔒'} ${esc(x.titre)}</span>
+    <div class="meter" aria-hidden="true"><div style="width:${Math.round(100 * x.pct)}%;background:var(--ok)"></div></div>
+    <span class="num">${x.done} / ${x.qs.length}</span>
+    <button class="ghost" data-l="${i}" ${x.open ? '' : 'disabled'}>${x.open ? (x.done ? 'Continuer' : 'Commencer') : 'Verrouillée'}</button></li>`).join('');
+  $$('#parcoursBody [data-l]').forEach(b => b.addEventListener('click', () => { $('#parcours').close(); start({ type: 'lecon', n: +b.dataset.l }); }));
+  $('#parcours').showModal();
 }
 
 let carte = null;
@@ -437,8 +494,11 @@ document.addEventListener('keydown', e => {
 });
 
 $('#sujet').insertAdjacentHTML('beforeend', Object.entries(SUJETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
-$$('.settings input, #sujet').forEach(i => i.addEventListener('change', () => start()));
+$('#terrain').insertAdjacentHTML('beforeend', TERRAINS.map(t => `<option value="${t.icao}">${t.nom} (${t.icao})</option>`).join(''));
+$$('.settings input, #sujet, #terrain').forEach(i => i.addEventListener('change', () => start()));
 $('#statsBtn').addEventListener('click', showStats);
+$('#parcoursBtn').addEventListener('click', showParcours);
+fetch('metar.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(j => { METAR = j; if ($('#terrain').value) start(); }).catch(() => {});
 $('#examBtn').addEventListener('click', () => {
   if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, correction à la fin. Commencer ?`)) start({ type: 'exam' });
 });

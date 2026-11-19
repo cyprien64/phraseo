@@ -97,4 +97,37 @@ function gradeElements(text, elements, callsigns) {
   return { pass: !notes.length, notes };
 }
 
-if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey };
+// Terrain réel : piste la plus face au vent du METAR (première piste si vent variable ou inconnu).
+function bestRunway(pistes, wdir) {
+  if (typeof wdir !== 'number') return pistes[0];
+  const off = p => { const d = Math.abs(+p * 10 - wdir) % 360; return Math.min(d, 360 - d); };
+  return pistes.reduce((a, b) => (off(b) < off(a) ? b : a));
+}
+// Après vary (la piste mémorisée est déjà la piste réelle) : nom du terrain, fréquence de la Tour ou du Sol,
+// vent et QNH du METAR (`wx` = { wdir, wspd, qnh } ou null). Ni l'AFIS ni l'ATIS (fictifs) ne changent ;
+// le terrain d'arrivée de la navigation (`dest`) garde sa météo.
+function realTerrain(q, t, wx) {
+  if (!t || /^(afis|atis)$/.test(q.cat || '')) return q;
+  const en = q.lang === 'en', fq = f => (en ? f.replace(',', '.') : f);
+  const name = s => s.replace(/Saint-Exémery(?= (Tour|Tower|Sol|Ground))/g, t.radio).replace(/Saint-Exémery/g, t.nom);
+  let wind = s => s, qnh = s => s;
+  if (wx && !q.dest) {
+    if (typeof wx.wdir === 'number' || wx.wspd === 0) { // vent variable : on garde le vent de l'exercice
+      const w = wx.wspd === 0 ? null : String(wx.wdir || 360).padStart(3, '0');
+      wind = s => s.replace(/\bvent \d{3} degrés \d+ nœuds/g, w ? `vent ${w} degrés ${wx.wspd} nœuds` : 'vent calme')
+        .replace(/\bwind \d{3} degrees \d+ knots/g, w ? `wind ${w} degrees ${wx.wspd} knots` : 'wind calm');
+    }
+    const orig = (`${q.atc} ${q.answers[0]}`.match(/QNH (\d{3,4})/) || [])[1];
+    if (orig && wx.qnh) {
+      const m = permMap(orig, String(wx.qnh));
+      const sub = s => s.replace(/QNH (\d{3,4})/g, (_, d) => `QNH ${m(d)}`);
+      if (!q.wrong.map(sub).includes(sub(q.answers[0]))) qnh = sub; // sinon une mauvaise réponse deviendrait juste
+    }
+  }
+  const f = s => qnh(wind(name(s)));
+  const st = (q.st || '').replace(/^(Tour|Tower) 118[,.]700$/, (_, x) => `${t.radio} ${x} ${fq(t.tour)}`)
+    .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => `${t.radio} ${x} ${fq(t.sol)}`);
+  return { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
+}
+
+if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain };
