@@ -104,11 +104,11 @@ const pau = TERRAINS.find(t => t.icao === 'LFBP');
   const w = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', memo: { rw24: '31' } }), pau, { wdir: 240, wspd: 10, qnh: 1009 });
   assert.strictEqual(w.atc, 'F-GXYZ, piste 31, autorisé décollage, vent 240 degrés 10 nœuds.'); assert.strictEqual(w.st, 'Pau Tour 124,155');
   assert.strictEqual(R.realTerrain(q, pau, { wspd: 0, qnh: 1009 }).atc, 'F-GBCD, piste 24, autorisé décollage, vent calme.'); }
-const WX = [null, { wdir: 240, wspd: 10, qnh: 1009 }, { wdir: 'VRB', wspd: 3, qnh: 1021 }, { wdir: 0, wspd: 0, qnh: 998 }, { wdir: 90, wspd: 25, qnh: 1012 }];
+const WX = [null, { wdir: 240, wspd: 10, qnh: 1009 }, { wdir: 300, wspd: 15, gust: 27, qnh: 1015 }, { wdir: 'VRB', wspd: 3, qnh: 1021 }, { wdir: 0, wspd: 0, qnh: 998 }, { wdir: 90, wspd: 25, qnh: 1012 }];
 let nt = 0;
 for (const t of TERRAINS) for (const wx of WX) for (const q of QUESTIONS.filter(q => q.regle !== 'alpha' && !q.qcmOnly && !q.elements)) {
   const memo = {}; memo.rw24 = memo.rw32 = memo.rw12 = R.bestRunway(t.pistes, wx?.wdir);
-  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx, 'Golf');
+  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx, 'Golf', memo.rw24);
   v.answers.forEach(a => assert(check(a, v.answers, v.callsigns).pass, 'référence (terrain réel) refusée : ' + a));
   v.wrong.forEach(w => assert(!check(w, v.answers, v.callsigns).pass, `mauvaise réponse (terrain réel ${t.icao}) acceptée : ${w} / ${v.answers[0]}`));
   if (wx?.qnh && !q.dest && /QNH/.test(q.atc) && !/afis|atis/.test(q.cat || '')) assert(v.atc.includes('QNH ' + wx.qnh) || v.wrong.some(w => w.includes('QNH ' + wx.qnh)), 'QNH réel : ' + v.atc);
@@ -183,3 +183,30 @@ console.log('choix ATIS OK');
 assert.strictEqual(R.atisFromMetar('METAR LFBP 191930Z AUTO 27008KT 9999 BKN068/// BKN094/// ///TCU 12/08 Q1013 TEMPO 26015G25KT', { radio: 'Pau' }, '31', 'fr').text,
   "Bonsoir, ici Pau information Hotel, enregistrée à 1930 UTC. Piste en service 31. Vent 270 degrés 8 nœuds. Visibilité 10 kilomètres. Nuages fragmenté 6800 pieds, fragmenté 9400 pieds, cumulonimbus bourgeonnant. Température 12, point de rosée 8. QNH 1013. Informez Pau dès le premier contact que vous avez reçu l'information Hotel.");
 console.log('ATIS station automatique OK');
+
+// ── Cartes VAC et AIP : sens du tour de piste, point d'entrée, approche / information, horaires, rafales ──
+{ const pau = TERRAINS.find(t => t.icao === 'LFBP'), bz = TERRAINS.find(t => t.icao === 'LFBZ'), ly = TERRAINS.find(t => t.icao === 'LFLY');
+  const vent = QUESTIONS.find(q => q.atc === 'F-GBCD, entrez vent arrière main droite piste 24, rappelez vent arrière.');
+  const v13 = R.realTerrain(R.vary(vent, { cs: 'F-GXYZ', memo: { rw24: '13' } }), pau, null, null, '13');
+  assert.strictEqual(v13.atc, 'F-GXYZ, entrez vent arrière main gauche piste 13, rappelez vent arrière.');
+  assert(v13.wrong.includes('Je rappelle vent arrière main droite piste 13, F-GXYZ'), 'le piège garde le sens opposé');
+  const v31 = R.realTerrain(R.vary(vent, { cs: 'F-GXYZ', memo: { rw24: '31' } }), pau, null, null, '31');
+  assert.strictEqual(v31.atc, 'F-GXYZ, entrez vent arrière main droite piste 31, rappelez vent arrière.');
+  const arr = QUESTIONS.find(q => q.elements && q.lang === 'fr' && /Guéret à Saint-Exémery/.test(q.answers[0]));
+  const a31 = R.realTerrain(arr, pau, null, 'Golf', '31');
+  assert.strictEqual(a31.answers[0], 'F-GBCD, DR400, VFR de Guéret à Pau-Pyrénées pour atterrissage, 2500 pieds, estimé NE à 05, information Golf');
+  assert(R.gradeElements(a31.answers[0], a31.elements, ['fgbcd']).pass);
+  assert(/estimé E à 05/.test(R.realTerrain(arr, ly, null, 'Golf', '16').answers[0]) === false);
+  const info = R.realTerrain(QUESTIONS.find(q => q.atc === 'F-GBCD, contactez Info 125,7.' && !q.cat), pau);
+  assert.strictEqual(info.atc, 'F-GBCD, contactez Pyrénées Information 126,530.'); assert.strictEqual(info.answers[0], 'Pyrénées Information 126,530, F-GBCD');
+  assert(!check(info.wrong[2], info.answers).pass, info.wrong[2]);
+  assert.strictEqual(R.realTerrain(QUESTIONS.find(q => q.st === 'Approche 120,850'), pau).st, 'Pyrénées Approche 128,805');
+  assert.strictEqual(R.realTerrain(QUESTIONS.find(q => q.st === 'Approche 120,850'), ly).st, 'Approche 120,850', 'pas d’approche dans l’AIP de Bron : fictive');
+  const ra = R.realTerrain(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.' && !q.cat), pau, { wdir: 300, wspd: 15, gust: 27, qnh: 1015 });
+  assert(/vent 300 degrés 15 nœuds, rafales 27 nœuds\./.test(ra.atc), ra.atc);
+  assert(R.atsOpen(pau, new Date('2026-11-19T23:30Z')));
+  assert(!R.atsOpen(bz, new Date('2026-11-19T23:00Z')) && R.atsOpen(bz, new Date('2026-11-19T12:00Z')));
+  assert(R.atsOpen(bz, new Date('2026-07-01T04:30Z')) && !R.atsOpen(bz, new Date('2026-07-01T04:10Z')), 'heure d’été : une heure plus tôt');
+  assert(R.atsOpen(TERRAINS.find(t => t.icao === 'LFBT'), new Date('2026-11-19T00:30Z')), 'plage de nuit 2330-0200');
+  assert(!R.atsOpen(ly, new Date('2026-11-22T06:00Z')) && R.atsOpen(ly, new Date('2026-11-23T06:00Z')), 'Bron : dimanche 0700, lundi 0530');
+  console.log('VAC, AIP, horaires, rafales OK'); }

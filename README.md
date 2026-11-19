@@ -33,9 +33,22 @@ Réalisme :
   de nuage non déterminé) est ignoré et « ///TCU » donne « cumulonimbus bourgeonnant » sans hauteur. La lettre est reprise
   dans les premiers appels de la série, et l'ATIS fictif de Saint-Exémery n'est plus proposé.
 - **Terrain réel, détails** : piste préférentielle de l'AIP quand elle est chiffrée (Nantes : piste 03 jusqu'à 5 kt de vent
-  arrière, AD 2 LFRS.21) ; sinon piste face au vent (Biarritz demande la 09 la nuit « quand les conditions le permettent »,
-  sans seuil : non appliqué). Le roulage se fait sur la fréquence Sol, et les fréquences citées dans les messages
-  (« contactez Tour… », essai radio) sont celles de l'AIP.
+  arrière, AD 2 LFRS.21) ; sinon piste face au vent. Le roulage se fait sur la fréquence Sol, et les fréquences citées
+  dans les messages sont celles de l'AIP.
+  - **Cartes VAC du SIA** : vrai sens du tour de piste selon la piste en service (Pau : main gauche en 13, main droite en 31 ;
+    Biarritz : droite en 09, gauche en 27 ; Tarbes : gauche ; Lyon-Bron : gauche en 16, droite en 34 ; Nantes : gauche en 03,
+    droite en 21), lu sur la carte « Atterrissage à vue » ; vrai point d'entrée à la place du point fictif « E » (Pau : N ou NE
+    selon la piste, à 1600 ou 2500 ft comme le prévoit la VAC ; Biarritz, Tarbes, Nantes : E ; Lyon-Bron : MS).
+  - **Approche et information de vol réelles** (AD 2.18) : Pyrénées (Pau), Biarritz, Nantes. L'AIP de Tarbes et de Lyon-Bron
+    n'en donne pas : elles restent fictives.
+  - **Horaires** (AD 2.3) : hors horaires ATS publiés, un avertissement indique qu'en réalité il n'y a pas de contrôle.
+  - **Rafales** du METAR dans les clairances : « vent 260 degrés 15 nœuds, rafales 25 nœuds » (Manuel p. 154).
+  - **Exercices selon la météo** : visibilité ou plafond bas → VFR spécial ; vent fort → remise de gaz.
+- **Contrôleur** : à l'écrit et à l'oral, un collationnement faux reçoit tout de suite « Négatif je répète » et la clairance
+  (SERA.14075 d)), la correction détaillée vient après le 2e essai ; en Expert et Expert+, sans réponse au bout de
+  10 secondes, le contrôleur vous appelle (« F-CD, Pau Tour », SERA.14055 b)).
+- **Accent en anglais** (option) : britannique, américain, écossais, français (une voix française lit l'anglais, comme un
+  contrôleur français) ou varié selon le poste.
 - **Son radio** : le contrôleur répond après un court délai ; en Expert et Expert+, brèves pertes de signal ; les autres
   avions, plus loin, arrivent plus faibles et plus bruités ; en mode « Pilote fautif », on entend le pilote collationner.
 - **⎵ Alternat** (mode oral) : maintenir la barre Espace pour parler, la relâcher pour finir, comme le bouton du manche.

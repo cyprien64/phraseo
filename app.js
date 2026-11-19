@@ -126,6 +126,17 @@ function start(sess = null) {
   const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav'].includes($('#sujet').value)
     && !['fautif', 'dictee'].includes(val('mode')) ? liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')) : [];
   if (live.length) pool = [...live, ...pool.filter(q => q.cat !== 'atis')]; // l'ATIS reconstitué remplace l'ATIS fictif de Saint-Exémery
+  // météo réelle : visibilité ou plafond bas → VFR spécial ; vent fort ou rafales → remise de gaz (exercices vérifiés existants)
+  const met = live.length && parseMetar(wx.raw);
+  if (met && $('#sujet').value === 'all') {
+    const low = (met.vis && met.vis < 5000) || met.clouds.some(c => /BKN|OVC/.test(c.c || '') && c.h < 1500);
+    const windy = wx.wspd >= 20 || wx.gust >= 25;
+    const m = val('mode'), tag = (re, note) => QUESTIONS.filter(q => langOk(q) && q.atc && re.test(q.atc) && (m === 'qcm' || !q.qcmOnly))
+      .sort(() => Math.random() - 0.5).slice(0, 2).map(q => ({ ...q, ctx: `${note} ${q.ctx}` }));
+    const extraWx = [...(low ? tag(/VFR spécial|special VFR/, '🌫️ Visibilité ou plafond bas au METAR.') : []),
+      ...(windy ? tag(/remettez les gaz|go around/, '💨 Vent fort au METAR.') : [])];
+    pool.splice(live.length, 0, ...extraWx);
+  }
   stats();
   next();
 }
@@ -137,7 +148,7 @@ let METAR = [];
 function wxOf(icao) {
   const m = Array.isArray(METAR) && METAR.find(x => x.icaoId === icao);
   if (!m || Date.now() / 1000 - m.obsTime > 3 * 3600) return null;
-  return { wdir: m.wdir, wspd: m.wspd, qnh: Math.round(m.altim), raw: m.rawOb };
+  return { wdir: m.wdir, wspd: m.wspd, gust: m.wgst || null, qnh: Math.round(m.altim), raw: m.rawOb };
 }
 function prepare(q) {
   if (q.regle === 'alpha' || q.prepared) return q;
@@ -150,7 +161,7 @@ function prepare(q) {
   if (q.atc && q.st && q.cat !== 'atis') memo.contact = true;
   const shown = short ? abbrev(series) : series;
   let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
-  if (terrain) c = realTerrain(c, terrain, wx, atisLetter);
+  if (terrain) c = realTerrain(c, terrain, wx, atisLetter, memo.rw24);
   if (c.atc && !c.q && !c.elements) c = trickyWrongs(c, shown); // QCM piégeux : une seule petite erreur par choix
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
@@ -189,7 +200,7 @@ function chatterFor(q, c) {
   const x = others[Math.floor(Math.random() * others.length)];
   const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
   let v = vary(x, { cs, values: true, memo: { ...memo } });
-  if (terrain) v = realTerrain(v, terrain, wx, atisLetter);
+  if (terrain) v = realTerrain(v, terrain, wx, atisLetter, memo.rw24);
   return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
 }
 
@@ -222,7 +233,7 @@ function stats() {
 }
 
 function next() {
-  hush(); stopRecording();
+  hush(); stopRecording(); clearTimeout(recallT);
   if (myAudio) { URL.revokeObjectURL(myAudio); myAudio = null; }
   if (!pool.length) { $('#card').innerHTML = '<p class="ctx">Aucune question pour ces réglages.</p>'; return; }
   if (idx >= pool.length) return end();
@@ -238,7 +249,8 @@ function next() {
     <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
     <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? esc(wx.raw) : 'METAR indisponible : vent et QNH de l’exercice.'}
-      <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}</span></p>` : ''}
+      <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}</span>
+      ${atsOpen(terrain) ? '' : `<span class="closed">🌙 Hors horaires ATS publiés (${esc(terrain.atsTxt)}) : en réalité, pas de contrôle à cette heure-ci.</span>`}</p>` : ''}
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.chatter) h += `<div class="fil" aria-label="${en ? 'Other traffic on frequency' : 'Autres avions sur la fréquence'}">${cur.chatter.map(l =>
     `<div class="bubble ${l.pilot ? 'pilot' : 'atc'} other"><div class="who">${esc(l.who)}</div><p class="msg ${listen ? 'hidden' : ''}" ${listen ? 'aria-hidden="true"' : ''}>${esc(l.text)}</p></div>`).join('')}</div>`;
@@ -291,9 +303,11 @@ const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 // Meilleures voix installées d'abord ; chaque poste (Sol, Tour, Approche…) garde « son » contrôleur.
 function pickVoice(lang, st = '') {
-  // en anglais, à partir du niveau Confirmé, toutes les variantes (GB, US, AU, IE, IN…) : accents variés selon le poste
-  const region = lang === 'fr' || val('niv') === '1';
-  const good = v => (/premium|enhanced|natural|neural|google/i.test(v.name) ? 2 : 0) + (region && /GB|FR/.test(v.lang) ? 1 : 0)
+  // accent choisi pour l'anglais ; « fr » : voix française ; « mix » : toutes les variantes, selon le poste
+  const acc = lang === 'en' ? $('#accent').value : '';
+  if (acc === 'fr') lang = 'fr';
+  const want = { gb: /GB/, us: /US/, sco: /GB|IE/, fr: /FR/ }[acc] || (lang === 'fr' || val('niv') === '1' ? /GB|FR/ : null);
+  const good = v => (/premium|enhanced|natural|neural|google/i.test(v.name) ? 2 : 0) + (want && want.test(v.lang) ? 1 : 0)
     - (/eloquence|^(eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley)\b/i.test(v.voiceURI + ' ' + v.name) ? 3 : 0); // voix peu naturelles (macOS)
   const vs = speechSynthesis.getVoices() // voix « fantaisie » macOS (Bells, Jester/Bouffon…) : noms traduits, on filtre aussi par voiceURI
     .filter(v => v.lang.toLowerCase().startsWith(lang) && !NOVELTY.test(v.name) && !/speech\.synthesis\.voice/.test(v.voiceURI))
@@ -330,9 +344,13 @@ function stopHiss() { for (const n of [hissNode, rumbleNode]) try { n?.stop(); }
 // En cas d'échec (hors ligne, navigateur trop ancien) : voix du système.
 const NEURAL = { fr: ['fr_FR-tom-medium', 'fr_FR-siwis-medium'],
   en: ['en_GB-alan-medium', 'en_GB-cori-medium', 'en_GB-northern_english_male-medium'] };
+// Accent des voix anglaises (option) ; « fr » : une voix française lit l'anglais, comme un contrôleur français.
+const ACCENTS = { gb: NEURAL.en, us: ['en_US-ryan-medium', 'en_US-amy-medium'], sco: ['en_GB-alba-medium'], fr: NEURAL.fr,
+  mix: ['en_GB-alan-medium', 'en_US-ryan-medium', 'en_GB-alba-medium', 'en_GB-northern_english_male-medium', 'fr_FR-tom-medium'] };
 // Le contrôleur garde la voix de son poste ; un pilote prend une autre voix que celle du contrôleur.
 function neuralVoice(lang, st, pilotCs) {
-  const vs = NEURAL[lang] || NEURAL.fr, atc = val('niv') === '1' ? 0 : hash(st || '') % vs.length;
+  const vs = lang === 'en' ? ACCENTS[$('#accent').value] || NEURAL.en : NEURAL.fr, atc = val('niv') === '1' ? 0 : hash(st || '') % vs.length;
+  if (vs.length === 1) return vs[0];
   return pilotCs ? vs[(atc + 1 + hash(pilotCs) % (vs.length - 1)) % vs.length] : vs[atc];
 }
 // Débit : celui, naturel, du modèle ; un peu plus posé en Débutant (durée × 1,12).
@@ -434,13 +452,28 @@ async function play(lines, delay = 0) {
     if (i) await pause(350 + Math.random() * 700);
     await transmit(l, tok, L);
   }
+  return tok === sayTok; // vrai si tout a été émis (pas interrompu)
 }
 // `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée), précédé la première fois
 // des échanges des autres avions sur la fréquence.
 function say(text, delay = 0) {
   const lines = cardLines(text);
   if (cur.chatter) cur.chatterDone = true;
-  return play(lines, delay);
+  return play(lines, delay).then(done => { if (done && text == null) armRecall(); return done; });
+}
+// Pas de réponse au bout de 10 s (Expert, Expert+) : le contrôleur vous appelle (« F-CD, Pau Tour » : station appelée
+// puis station appelante, SERA.14055 b)).
+let recallT = null;
+function armRecall() {
+  clearTimeout(recallT);
+  if (+val('niv') < 3 || answered || session?.type === 'exam' || !cur.atc || cur.q || cur.notMine || cur.dictee || cur.live || cur.pilote) return;
+  const card = cur;
+  recallT = setTimeout(() => {
+    if (card !== cur || answered) return;
+    const call = `${cur.shown}, ${cur.st.replace(/\s+[\d.,]+$/, '')}`;
+    $('#fb').insertAdjacentHTML('beforebegin', `<div class="bubble atc"><div class="who">ATC</div><p class="msg">${esc(call)}</p></div>`);
+    play([{ text: call, lang: cur.lang, st: cur.st }]);
+  }, 10000);
 }
 
 // Voix du système (voix installées sur l'appareil), sans filtre radio possible.
@@ -556,7 +589,11 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   }
   if (session) session.log.push({ q: cur, good, chosen: chosen || said });
   if (session?.type === 'exam') return next(); // examen : correction seulement à la fin
-  stats();
+  stats(); clearTimeout(recallT);
+  // écrit / oral : comme à la radio, le contrôleur répond tout de suite « Négatif je répète » (SERA.14075 d)) ;
+  // la correction détaillée vient après le 2e essai
+  if (!good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && !cur.pilote && cur.atc && !cur.q
+    && modeNow() !== 'qcm') return retry(modeNow() === 'ecrit' ? said : '');
   $$('#card .msg.hidden').forEach(x => { x.classList.remove('hidden'); x.removeAttribute('aria-hidden'); });
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
@@ -565,7 +602,6 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     : `❌ Ce message était pour ${cur.notMine}, pas pour vous (${cur.shown}) : il ne fallait pas répondre.`;
   else if (nm) head = `❌ Ce message était pour vous (${cur.shown}) : il fallait répondre.`;
   if (cur.retry) head = `2e essai (non compté) : ${head}`;
-  const canRetry = !good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && !cur.pilote && cur.atc && modeNow() !== 'qcm';
   if (cur.pilote) head = good ? `✅ Bien vu : le collationnement était ${cur.answers[0] === 'Correct' ? 'correct' : 'faux'}.`
     : `❌ Le collationnement était ${cur.answers[0] === 'Correct' ? 'correct' : 'faux'}.`;
   const why = whyRules(cur.orig || cur), fiche = FICHES.find(f => f.id === why.fiche);
@@ -577,10 +613,9 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     <p class="src">📘 Source : ${esc(cur.notMine ? `${MANUEL(24)} (confusion d’indicatifs)` : cur.src)}</p>
     <details class="why"><summary>❓ Pourquoi ?</summary><ul>${why.regles.map(r => `<li>${esc(r.texte)} <span class="src">(${esc(r.src)})</span></li>`).join('')}</ul>
       ${fiche ? `<button class="ghost" data-fiche="${fiche.id}">📚 Fiche : ${esc(fiche.titre)}</button>` : ''}</details>
-    <div class="row">${canRetry ? '<button id="again1">🔁 Le contrôleur corrige (« Négatif je répète »)</button>' : ''}
+    <div class="row">
     <button class="primary" id="nx">Suivant →</button></div></div>`;
   if (cur.cut) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
-  $('#again1')?.addEventListener('click', retry);
   showMyVoice();
   $('#fb [data-fiche]')?.addEventListener('click', e => openFiche(e.target.dataset.fiche));
   $('#nx').addEventListener('click', next);
@@ -588,13 +623,16 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
 }
 
 // SERA.14075 d) : « NÉGATIF JE RÉPÈTE » suivi de la version correcte ; nouvel essai non compté.
-function retry() {
+// `said` : votre collationnement écrit, « transmis » avec votre voix de pilote avant la réponse du contrôleur.
+function retry(said = '') {
   cur.retry = true; answered = false;
-  const body = cur.atc.replace(/^[^,]+,\s*/, '');
-  say(cur.lang === 'en' ? `${cur.shown}, negative I say again, ${body}` : `${cur.shown}, négatif je répète, ${body}`);
-  $('#fb').innerHTML = `<p class="muted">${cur.lang === 'en' ? 'Negative I say again…' : 'Négatif je répète…'} Collationnez à nouveau (essai non compté).</p>`;
+  const en = cur.lang === 'en', body = cur.atc.replace(/^[^,]+,\s*/, '');
+  const neg = `${cur.shown}, ${en ? 'negative I say again' : 'négatif je répète'}, ${body}`;
+  play([...(said ? [{ text: said, lang: cur.lang, st: cur.st, pilot: true, cs: cur.shown }] : []), { text: neg, lang: cur.lang, st: cur.st }]);
+  $('#fb').innerHTML = `<p class="muted">📻 ${en ? '« Negative I say again… »' : '« Négatif je répète… »'} : le contrôleur a relevé une erreur et répète
+    la clairance. Collationnez à nouveau (essai non compté).</p>`;
   if ($('#txt')) { $('#txt').value = ''; $('#go').disabled = false; $('#txt').focus(); }
-  if ($('#mic')) { $('#mic').disabled = false; $('#mic').textContent = '🎤 Appuyer pour parler'; }
+  if ($('#mic')) { $('#mic').disabled = false; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤 Appuyer pour parler · ⎵ Espace'; }
 }
 
 function end() {

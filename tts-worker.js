@@ -16,6 +16,9 @@ const PATHS = {
   'en_GB-alan-medium': 'en/en_GB/alan/medium/en_GB-alan-medium.onnx',
   'en_GB-cori-medium': 'en/en_GB/cori/medium/en_GB-cori-medium.onnx',
   'en_GB-northern_english_male-medium': 'en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx',
+  'en_GB-alba-medium': 'en/en_GB/alba/medium/en_GB-alba-medium.onnx',
+  'en_US-ryan-medium': 'en/en_US/ryan/medium/en_US-ryan-medium.onnx',
+  'en_US-amy-medium': 'en/en_US/amy/medium/en_US-amy-medium.onnx',
 };
 
 caches.delete('phraseo-voix-v1').catch(() => {}); // voix d'avant la version figée : place libérée

@@ -110,23 +110,46 @@ function bestRunway(pistes, wdir, wspd = 0, pref = null) {
 // et messages), vent et QNH du METAR (`wx` = { wdir, wspd, qnh } ou null), lettre de l'ATIS reconstitué (`letter`).
 // Ni l'AFIS ni l'ATIS fictifs ne changent ; le terrain d'arrivée de la navigation (`dest`) garde sa météo et son ATIS.
 const ATIS_WORD = /\b(information |ATIS « |ATIS ")(Alfa|Bravo|Charlie|Delta|Echo|Foxtrot|Golf|Hotel|India|Juliett|Kilo|Lima|Mike|November|Oscar|Papa|Quebec|Romeo|Sierra|Tango|Uniform|Victor|Whiskey|X-ray|Yankee|Zulu)\b/g;
-function realTerrain(q, t, wx, letter) {
+// Fréquence aux deux premières décimales inversées : la mauvaise réponse du QCM qui remplace la fausse fréquence.
+const swapFreq = f => { const [mhz, dec] = f.split(','), i = dec[0] !== dec[1] ? 0 : 1; return `${mhz},${dec.slice(0, i)}${dec[i + 1]}${dec[i]}${dec.slice(i + 2)}`; };
+const SIDE = { gauche: 'droite', droite: 'gauche', left: 'right', right: 'left' };
+function realTerrain(q, t, wx, letter, rwy) {
   if (!t || /^(afis|atis)$/.test(q.cat || '')) return q;
   const en = q.lang === 'en', fq = f => (en ? f.replace(',', '.') : f);
-  // fréquence de la Tour citée dans un message (« contactez Tour 118,7 », « essai radio 118,7 ») ; la mauvaise
-  // réponse du QCM (117,8) devient la vraie fréquence aux deux premières décimales inversées
-  const [mhz, dec] = t.tour.split(','), i = dec[0] !== dec[1] ? 0 : 1;
-  const swapped = `${mhz},${dec.slice(0, i)}${dec[i + 1]}${dec[i]}${dec.slice(i + 2)}`;
-  const freqs = s => s.replace(/\b118,7(00)?(?!\d)/g, t.tour).replace(/\b117,8(00)?(?!\d)/g, swapped)
-    .replace(/\b118\.700\b/g, fq(t.tour)).replace(/\b117\.800\b/g, fq(swapped));
+  // fréquences citées dans un message (« contactez Tour 118,7 », « essai radio 118,7 », « contactez Info 125,7 »)
+  const fis = t.fis && `${t.fis.nom} Information `;
+  const freqs = s => {
+    s = s.replace(/\b118,7(00)?(?!\d)/g, t.tour).replace(/\b117,8(00)?(?!\d)/g, swapFreq(t.tour))
+      .replace(/\b118\.700\b/g, fq(t.tour)).replace(/\b117\.800\b/g, fq(swapFreq(t.tour)));
+    if (fis) s = s.replace(/\bInfo(?:rmation)? 125[,.]7(00)?(?!\d)/g, fis + fq(t.fis.freq))
+      .replace(/\bInfo(?:rmation)? 127[,.]5(00)?(?!\d)/g, fis + fq(swapFreq(t.fis.freq)));
+    return s;
+  };
+  // carte VAC : point d'entrée réel à la place du point fictif « E », altitude de présentation (Pau), et sens réel du
+  // tour de piste (les mauvaises réponses gardent le sens opposé)
+  const entree = !q.dest && t.entree && (typeof t.entree === 'string' ? t.entree : t.entree[rwy]);
+  const alt = !q.dest && t.arrAlt?.[rwy];
+  const arrivee = /\b(?:point|estimé|estimate) E\b/.test(`${q.ctx} ${q.answers[0]}`);
+  const vac = s => {
+    if (entree) s = s.replace(/\b(point|estimé|estimate|rappelez|report|rappelle|Reporting|passe|passing) E\b(?! N)/g, `$1 ${entree}`);
+    if (alt && arrivee) s = s.replace(/\b1500 (pieds|feet)\b/g, `${alt} $1`);
+    return s;
+  };
+  const rw = (`${q.atc} ${q.answers[0]}`.match(/\b(?:piste|runway) (\d\d)\b/) || [])[1];
+  const side0 = (`${q.atc} ${q.answers[0]}`.match(/\bmain (droite|gauche)\b|\b(right|left)-hand\b/) || []).slice(1).find(Boolean);
+  const want = !q.dest && rw && t.circuit?.[rw];
+  const flip = want && side0 && (en ? { droite: 'right', gauche: 'left' }[want] : want) !== side0;
+  const circuit = s => (flip ? s.replace(/\bmain (droite|gauche)\b/g, (_, x) => `main ${SIDE[x]}`).replace(/\b(right|left)-hand\b/g, (_, x) => `${SIDE[x]}-hand`) : s);
   const atis = s => (letter && !q.dest ? s.replace(ATIS_WORD, `$1${letter}`) : s);
   const name = s => s.replace(/Saint-Exémery(?= (Tour|Tower|Sol|Ground))/g, t.radio).replace(/Saint-Exémery/g, t.nom);
   let wind = s => s, qnh = s => s;
   if (wx && !q.dest) {
     if (typeof wx.wdir === 'number' || wx.wspd === 0) { // vent variable : on garde le vent de l'exercice
       const w = wx.wspd === 0 ? null : String(wx.wdir || 360).padStart(3, '0');
-      wind = s => s.replace(/\bvent \d{3} degrés \d+ nœuds/g, w ? `vent ${w} degrés ${wx.wspd} nœuds` : 'vent calme')
-        .replace(/\bwind \d{3} degrees \d+ knots/g, w ? `wind ${w} degrees ${wx.wspd} knots` : 'wind calm');
+      // rafales : « vent 250 degrés 12 nœuds, rafales 25 nœuds » (Manuel DSNA p. 154)
+      const g = w && wx.gust ? [`, rafales ${wx.gust} nœuds`, `, gusting ${wx.gust} knots`] : ['', ''];
+      wind = s => s.replace(/\bvent \d{3} degrés \d+ nœuds/g, w ? `vent ${w} degrés ${wx.wspd} nœuds${g[0]}` : 'vent calme')
+        .replace(/\bwind \d{3} degrees \d+ knots/g, w ? `wind ${w} degrees ${wx.wspd} knots${g[1]}` : 'wind calm');
     }
     const orig = (`${q.atc} ${q.answers[0]}`.match(/QNH (\d{3,4})/) || [])[1];
     if (orig && wx.qnh) {
@@ -135,15 +158,17 @@ function realTerrain(q, t, wx, letter) {
       if (!q.wrong.map(sub).includes(sub(q.answers[0]))) qnh = sub; // sinon une mauvaise réponse deviendrait juste
     }
   }
-  const f = s => atis(freqs(qnh(wind(name(s)))));
+  const f = s => circuit(vac(atis(freqs(qnh(wind(name(s)))))));
   // sur ces aérodromes, le roulage se fait avec le Sol (fréquence SOL de l'AIP), le reste avec la Tour
   const sol = /^(Tour|Tower) 118[,.]700$/.test(q.st || '') && /^\S+, (roulez|taxi)\b/i.test(q.atc);
   const st = (q.st || '').replace(/^(Tour|Tower) 118[,.]700$/, (_, x) => (sol ? `${t.radio} ${en ? 'Ground' : 'Sol'} ${fq(t.sol)}` : `${t.radio} ${x} ${fq(t.tour)}`))
-    .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => `${t.radio} ${x} ${fq(t.sol)}`);
+    .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => `${t.radio} ${x} ${fq(t.sol)}`)
+    .replace(/^(Approche|Approach) 120[,.]850$/, (m, x) => (t.app ? `${t.app.nom} ${x} ${fq(t.app.freq)}` : m))
+    .replace(/^Info(?:rmation)? 125[,.]700$/, m => (fis ? fis + fq(t.fis.freq) : m));
   const out = { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
   if (q.elements) { // premier appel libre : le terrain et la lettre d'ATIS attendus suivent les substitutions
     const key = normalize(t.radio).join('');
-    out.elements = q.elements.map(([l, re]) => [l, re === 'CS' ? re : re.replace('exemery', key)
+    out.elements = q.elements.map(([l, re]) => [l, re === 'CS' ? re : re.replace('exemery', key).replace(/^1500 /, alt && arrivee ? `${alt} ` : '1500 ')
       .replace(/information [a-z]\\b/, letter && !q.dest ? `information ${letter[0].toLowerCase()}\\b` : '$&')]);
   }
   return out;
@@ -257,4 +282,15 @@ function atisChoices(a, pistes) {
   return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
+// Tour ouverte ? Horaires ATS de l'AIP (UTC hiver ; en été, une heure plus tôt). `date` : maintenant.
+function lastSunday(y, m) { const d = new Date(Date.UTC(y, m + 1, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d; }
+function atsOpen(t, date = new Date()) {
+  if (!t.ats) return true;
+  const y = date.getUTCFullYear(), ete = date >= new Date(+lastSunday(y, 2) + 3600e3) && date < new Date(+lastSunday(y, 9) + 3600e3);
+  const now = date.getUTCHours() * 60 + date.getUTCMinutes() + (ete ? 60 : 0); // on compare en « heure d'hiver »
+  const min = h => Math.floor(h / 100) * 60 + h % 100;
+  const plages = t.atsJours ? t.ats[date.getUTCDay()] : t.ats;
+  return plages.some(([a, b]) => (min(a) <= min(b) ? now >= min(a) && now < min(b) : now >= min(a) || now < min(b)));
+}
+
+if (typeof module !== 'undefined') module.exports = { atsOpen, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };

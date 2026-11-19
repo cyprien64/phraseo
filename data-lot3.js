@@ -11,13 +11,32 @@ SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
 // Pistes préférentielles (AD 2.20 / 2.21) : seule Nantes en publie une chiffrée. Biarritz demande la piste 09 au
 // décollage de 20 h à 7 h « chaque fois que les conditions le permettent », sans seuil : non appliqué. Pau, Tarbes et
 // Lyon-Bron n'en publient pas : piste face au vent.
+// Sources : AIP AD 2 (fréquences AD 2.18, horaires ATS AD 2.3, AIRAC 29/10/2026) et cartes VAC du SIA (points de compte
+// rendu et procédures en texte ; sens et altitude des tours de piste avions lus sur la carte « Atterrissage à vue »).
+// `circuit` : sens du tour de piste par piste ; `tdp` : altitude du tour de piste (ft AMSL) ; `entree` : point d'entrée
+// utilisé pour les arrivées (Pau : selon la piste, procédure VAC) ; `arrAlt` : altitude de présentation (Pau, VAC) ;
+// `app` / `fis` : approche et information de vol de l'AD 2.18 (absentes de l'AIP de Tarbes et de Lyon-Bron : fictives) ;
+// `ats` : horaires ATS en UTC hiver ([début, fin] en HHMM ; par jour 0 = dimanche si `atsJours`), null = H24.
 const TERRAINS = [
-  { icao: 'LFBP', nom: 'Pau-Pyrénées', radio: 'Pau', pistes: ['13', '31'], tour: '124,155', sol: '121,755', atis: '128,480' },
-  { icao: 'LFBZ', nom: 'Biarritz-Pays basque', radio: 'Biarritz', pistes: ['09', '27'], tour: '118,705', sol: '121,955', atis: '128,230' },
-  { icao: 'LFBT', nom: 'Tarbes-Lourdes-Pyrénées', radio: 'Lourdes', pistes: ['02', '20'], tour: '119,055', sol: '121,805', atis: '125,955' },
-  { icao: 'LFLY', nom: 'Lyon-Bron', radio: 'Bron', pistes: ['16', '34'], tour: '118,105', sol: '121,705', atis: '128,130' },
+  { icao: 'LFBP', nom: 'Pau-Pyrénées', radio: 'Pau', pistes: ['13', '31'], tour: '124,155', sol: '121,755', atis: '128,480',
+    app: { nom: 'Pyrénées', freq: '128,805' }, fis: { nom: 'Pyrénées', freq: '126,530' },
+    circuit: { 13: 'gauche', 31: 'droite' }, tdp: 1600, entree: { 13: 'N', 31: 'NE' }, arrAlt: { 13: 1600, 31: 2500 },
+    ats: null, atsTxt: 'H24' },
+  { icao: 'LFBZ', nom: 'Biarritz-Pays basque', radio: 'Biarritz', pistes: ['09', '27'], tour: '118,705', sol: '121,955', atis: '128,230',
+    app: { nom: 'Biarritz', freq: '125,605' }, fis: { nom: 'Biarritz', freq: '119,180' },
+    circuit: { '09': 'droite', 27: 'gauche' }, tdp: 1200, entree: 'E',
+    ats: [[515, 2200]], atsTxt: '0515-2200 UTC en hiver, une heure plus tôt en été' },
+  { icao: 'LFBT', nom: 'Tarbes-Lourdes-Pyrénées', radio: 'Lourdes', pistes: ['02', '20'], tour: '119,055', sol: '121,805', atis: '125,955',
+    circuit: { '02': 'gauche', 20: 'gauche' }, tdp: 2300, entree: 'E',
+    ats: [[400, 2230], [2330, 200]], atsTxt: '0400-2230 et 2330-0200 UTC en hiver, une heure plus tôt en été' },
+  { icao: 'LFLY', nom: 'Lyon-Bron', radio: 'Bron', pistes: ['16', '34'], tour: '118,105', sol: '121,705', atis: '128,130',
+    circuit: { 16: 'gauche', 34: 'droite' }, tdp: 1500, entree: 'MS',
+    ats: [[[700, 2000]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[700, 2130]]], atsJours: true,
+    atsTxt: 'lun-ven 0530-2130, sam 0700-2130, dim et fériés 0700-2000 UTC en hiver, une heure plus tôt en été' },
   { icao: 'LFRS', nom: 'Nantes-Atlantique', radio: 'Nantes', pistes: ['03', '21'], tour: '118,655', sol: '121,655', atis: '126,930',
-    pref: { piste: '03', tail: 5 } }, // AD 2 LFRS.21 § 21.3.2 : « RWY 03 préférentiel jusqu'à 5 kt de vent arrière »
+    pref: { piste: '03', tail: 5 }, // AD 2 LFRS.21 § 21.3.2 : « RWY 03 préférentiel jusqu'à 5 kt de vent arrière »
+    app: { nom: 'Nantes', freq: '119,400' }, fis: { nom: 'Nantes', freq: '122,800' },
+    circuit: { '03': 'gauche', 21: 'droite' }, tdp: 1100, entree: 'E', ats: null, atsTxt: 'H24' },
 ];
 
 // Navigation VFR complète : messages enchaînés dans l'ordre (champ `nav`), même indicatif et mêmes valeurs.
