@@ -108,7 +108,7 @@ const WX = [null, { wdir: 240, wspd: 10, qnh: 1009 }, { wdir: 'VRB', wspd: 3, qn
 let nt = 0;
 for (const t of TERRAINS) for (const wx of WX) for (const q of QUESTIONS.filter(q => q.regle !== 'alpha' && !q.qcmOnly && !q.elements)) {
   const memo = {}; memo.rw24 = memo.rw32 = memo.rw12 = R.bestRunway(t.pistes, wx?.wdir);
-  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx);
+  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx, 'Golf');
   v.answers.forEach(a => assert(check(a, v.answers, v.callsigns).pass, 'référence (terrain réel) refusée : ' + a));
   v.wrong.forEach(w => assert(!check(w, v.answers, v.callsigns).pass, `mauvaise réponse (terrain réel ${t.icao}) acceptée : ${w} / ${v.answers[0]}`));
   if (wx?.qnh && !q.dest && /QNH/.test(q.atc) && !/afis|atis/.test(q.cat || '')) assert(v.atc.includes('QNH ' + wx.qnh) || v.wrong.some(w => w.includes('QNH ' + wx.qnh)), 'QNH réel : ' + v.atc);
@@ -162,3 +162,24 @@ console.log('choix ATIS OK');
 { const h = s => [...s].reduce((x, c) => (x * 31 + c.charCodeAt(0)) >>> 0, 7); // même calcul que app.js
   const ids = QUESTIONS.map(q => h([q.lang, q.regle, q.atc, q.q, q.ctx, ...(q.nav ? [q.nav] : [])].join('|')).toString(36));
   assert.strictEqual(new Set(ids).size, ids.length, 'identifiants en double'); console.log('identifiants uniques OK'); }
+
+// ── Terrain réel : piste préférentielle, fréquences dans les messages, Sol, lettre d'ATIS, premier appel ──
+{ const nantes = TERRAINS.find(t => t.icao === 'LFRS'), pau = TERRAINS.find(t => t.icao === 'LFBP');
+  assert.strictEqual(R.bestRunway(nantes.pistes, 210, 4, nantes.pref), '03', '4 kt de vent arrière : piste 03');
+  assert.strictEqual(R.bestRunway(nantes.pistes, 210, 8, nantes.pref), '21', '8 kt de vent arrière : piste 21');
+  assert.strictEqual(R.bestRunway(nantes.pistes, 'VRB', 3, nantes.pref), '03');
+  const appr = QUESTIONS.find(q => q.atc === 'F-GBCD, contactez Tour 118,7.'), v = R.realTerrain(appr, pau, null, 'Golf');
+  assert.strictEqual(v.atc, 'F-GBCD, contactez Tour 124,155.'); assert(v.wrong.includes('Tour 124,515, F-GBCD'));
+  const en = R.realTerrain(QUESTIONS.find(q => q.atc === 'F-GBCD, contact Tower 118.700.'), pau, null, 'Golf');
+  assert.strictEqual(en.answers[0], 'Tower 124.155, F-GBCD'); assert(!check(en.wrong[1], en.answers).pass);
+  assert.strictEqual(R.realTerrain(QUESTIONS.find(q => q.atc === "F-GBCD, roulez point d'attente piste 24 via Alfa." && !q.cat), pau).st, 'Pau Sol 121,755');
+  for (const t of TERRAINS) for (const q of QUESTIONS.filter(q => q.elements)) {
+    const r = R.realTerrain(q, t, null, 'Golf');
+    assert(R.gradeElements(r.answers[0], r.elements, ['fgbcd']).pass, `premier appel ${t.icao} refusé : ${r.answers[0]}`);
+    if (/information/.test(q.answers[0])) assert(/information Golf/.test(r.answers[0]), r.answers[0]);
+  }
+  console.log('terrain réel (fréquences, Sol, ATIS, premier appel) OK'); }
+
+assert.strictEqual(R.atisFromMetar('METAR LFBP 191930Z AUTO 27008KT 9999 BKN068/// BKN094/// ///TCU 12/08 Q1013 TEMPO 26015G25KT', { radio: 'Pau' }, '31', 'fr').text,
+  "Bonsoir, ici Pau information Hotel, enregistrée à 1930 UTC. Piste en service 31. Vent 270 degrés 8 nœuds. Visibilité 10 kilomètres. Nuages fragmenté 6800 pieds, fragmenté 9400 pieds, cumulonimbus bourgeonnant. Température 12, point de rosée 8. QNH 1013. Informez Pau dès le premier contact que vous avez reçu l'information Hotel.");
+console.log('ATIS station automatique OK');

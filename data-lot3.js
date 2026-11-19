@@ -8,12 +8,16 @@ const AIP_AD = icao => `AIP France, AD 2 ${icao} (AIRAC 29/10/2026)`;
 SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
 
 // Indicatif radio = nom utilisé dans l'AIP (Tarbes : « Lourdes Tour »).
+// Pistes préférentielles (AD 2.20 / 2.21) : seule Nantes en publie une chiffrée. Biarritz demande la piste 09 au
+// décollage de 20 h à 7 h « chaque fois que les conditions le permettent », sans seuil : non appliqué. Pau, Tarbes et
+// Lyon-Bron n'en publient pas : piste face au vent.
 const TERRAINS = [
   { icao: 'LFBP', nom: 'Pau-Pyrénées', radio: 'Pau', pistes: ['13', '31'], tour: '124,155', sol: '121,755', atis: '128,480' },
   { icao: 'LFBZ', nom: 'Biarritz-Pays basque', radio: 'Biarritz', pistes: ['09', '27'], tour: '118,705', sol: '121,955', atis: '128,230' },
   { icao: 'LFBT', nom: 'Tarbes-Lourdes-Pyrénées', radio: 'Lourdes', pistes: ['02', '20'], tour: '119,055', sol: '121,805', atis: '125,955' },
   { icao: 'LFLY', nom: 'Lyon-Bron', radio: 'Bron', pistes: ['16', '34'], tour: '118,105', sol: '121,705', atis: '128,130' },
-  { icao: 'LFRS', nom: 'Nantes-Atlantique', radio: 'Nantes', pistes: ['03', '21'], tour: '118,655', sol: '121,655', atis: '126,930' },
+  { icao: 'LFRS', nom: 'Nantes-Atlantique', radio: 'Nantes', pistes: ['03', '21'], tour: '118,655', sol: '121,655', atis: '126,930',
+    pref: { piste: '03', tail: 5 } }, // AD 2 LFRS.21 § 21.3.2 : « RWY 03 préférentiel jusqu'à 5 kt de vent arrière »
 ];
 
 // Navigation VFR complète : messages enchaînés dans l'ordre (champ `nav`), même indicatif et mêmes valeurs.

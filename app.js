@@ -121,15 +121,17 @@ function start(sess = null) {
   // terrain réel (pas pour le défi, identique pour tous) : piste face au vent du dernier METAR
   terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === $('#terrain').value) || null;
   wx = terrain && wxOf(terrain.icao);
-  if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir);
-  if (terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav'].includes($('#sujet').value)
-    && !['fautif', 'dictee'].includes(val('mode'))) pool.unshift(...liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')));
+  if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir, wx?.wspd, terrain.pref);
+  atisLetter = terrain && wx ? atisFromMetar(wx.raw, terrain, memo.rw24, 'fr')?.letter : null; // même lettre dans toute la série
+  const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav'].includes($('#sujet').value)
+    && !['fautif', 'dictee'].includes(val('mode')) ? liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')) : [];
+  if (live.length) pool = [...live, ...pool.filter(q => q.cat !== 'atis')]; // l'ATIS reconstitué remplace l'ATIS fictif de Saint-Exémery
   stats();
   next();
 }
 
 // ── Réalisme : prépare la carte (valeurs aléatoires, indicatif abrégé, message pour un autre avion, coupure) ──
-let series = 'F-GBCD', memo = {}, terrain = null, wx = null;
+let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null;
 // METAR officiels récupérés par GitHub toutes les 30 min (metar.json, format aviationweather.gov) ; trop ancien = ignoré
 let METAR = [];
 function wxOf(icao) {
@@ -148,7 +150,7 @@ function prepare(q) {
   if (q.atc && q.st && q.cat !== 'atis') memo.contact = true;
   const shown = short ? abbrev(series) : series;
   let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
-  if (terrain) c = realTerrain(c, terrain, wx);
+  if (terrain) c = realTerrain(c, terrain, wx, atisLetter);
   if (c.atc && !c.q && !c.elements) c = trickyWrongs(c, shown); // QCM piégeux : une seule petite erreur par choix
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
@@ -187,7 +189,7 @@ function chatterFor(q, c) {
   const x = others[Math.floor(Math.random() * others.length)];
   const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
   let v = vary(x, { cs, values: true, memo: { ...memo } });
-  if (terrain) v = realTerrain(v, terrain, wx);
+  if (terrain) v = realTerrain(v, terrain, wx, atisLetter);
   return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
 }
 
@@ -205,9 +207,10 @@ function liveAtis(lang) {
   return qs.sort(() => Math.random() - 0.5).slice(0, 2).map(([q, ans, wrong]) => ({
     live: true, prepared: true, cat: 'atis', lang, regle: 'vfr', who: 'ATIS', shown: series,
     st: `${terrain.radio} ATIS ${en ? terrain.atis.replace(',', '.') : terrain.atis}`,
-    ctx: en ? `Listen to the current ${terrain.nom} ATIS before your first call.` : `Écoutez l’ATIS actuel de ${terrain.nom} avant votre premier appel.`,
+    ctx: en ? `ATIS rebuilt from the official ${terrain.nom} METAR (fictitious information letter; no transition level or local instructions). Listen to it before your first call.`
+      : `ATIS reconstitué d’après le METAR officiel de ${terrain.nom} (lettre d’information fictive ; sans niveau de transition ni consignes locales). Écoutez-le avant votre premier appel.`,
     atc: a.text, q, answers: [ans], wrong,
-    src: `METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218`,
+    src: `ATIS reconstitué (pas la diffusion réelle) : METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218`,
   }));
 }
 

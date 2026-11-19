@@ -25,10 +25,17 @@ Réalisme :
 - **📡 Fréquence vivante** (Confirmé et au-delà) : avant certains messages, on entend un autre avion échanger avec le
   même poste (clairance et collationnement tirés des exercices vérifiés, autre indicatif, voix de pilote avec le bruit
   du moteur) ; en Expert+, son indicatif ressemble souvent au vôtre.
-- **📻 ATIS réel** (avec un terrain réel) : la série commence par l'ATIS du moment, mis en forme à partir du dernier
-  METAR selon le modèle du manuel DSNA (p. 214-218 : lettre, heure, piste, vent et rafales, visibilité ou CAVOK, temps
-  présent, nuages, température, QNH, NOSIG) ; si le METAR contient un élément sans formulation dans le manuel (vent
-  variable, RVR…), pas d'ATIS. Fréquences ATIS de l'AIP.
+- **📻 ATIS reconstitué** (avec un terrain réel) : la série commence par un ATIS **reconstitué d'après le METAR officiel**
+  — ce n'est pas la diffusion réelle : la lettre d'information est fictive, la piste est celle que choisit le site, et il
+  n'y a ni niveau de transition ni consignes locales. Mise en forme selon le manuel DSNA (p. 214-218 : lettre, heure,
+  piste, vent et rafales, visibilité ou CAVOK, temps présent, nuages, température, QNH, NOSIG). Si le METAR contient un
+  élément sans formulation dans le manuel (vent variable, RVR…), pas d'ATIS. Sur une station automatique, « /// » (type
+  de nuage non déterminé) est ignoré et « ///TCU » donne « cumulonimbus bourgeonnant » sans hauteur. La lettre est reprise
+  dans les premiers appels de la série, et l'ATIS fictif de Saint-Exémery n'est plus proposé.
+- **Terrain réel, détails** : piste préférentielle de l'AIP quand elle est chiffrée (Nantes : piste 03 jusqu'à 5 kt de vent
+  arrière, AD 2 LFRS.21) ; sinon piste face au vent (Biarritz demande la 09 la nuit « quand les conditions le permettent »,
+  sans seuil : non appliqué). Le roulage se fait sur la fréquence Sol, et les fréquences citées dans les messages
+  (« contactez Tour… », essai radio) sont celles de l'AIP.
 - **Son radio** : le contrôleur répond après un court délai ; en Expert et Expert+, brèves pertes de signal ; les autres
   avions, plus loin, arrivent plus faibles et plus bruités ; en mode « Pilote fautif », on entend le pilote collationner.
 - **⎵ Alternat** (mode oral) : maintenir la barre Espace pour parler, la relâcher pour finir, comme le bouton du manche.

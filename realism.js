@@ -98,17 +98,28 @@ function gradeElements(text, elements, callsigns) {
 }
 
 // Terrain réel : piste la plus face au vent du METAR (première piste si vent variable ou inconnu).
-function bestRunway(pistes, wdir) {
+// Piste en service : la plus face au vent du METAR (première piste si vent variable ou inconnu), sauf piste
+// préférentielle publiée dans l'AIP (`pref` : piste gardée tant que le vent arrière ne dépasse pas `tail` nœuds).
+function bestRunway(pistes, wdir, wspd = 0, pref = null) {
+  if (pref && (typeof wdir !== 'number' || wspd * -Math.cos((wdir - +pref.piste * 10) * Math.PI / 180) <= pref.tail)) return pref.piste;
   if (typeof wdir !== 'number') return pistes[0];
   const off = p => { const d = Math.abs(+p * 10 - wdir) % 360; return Math.min(d, 360 - d); };
   return pistes.reduce((a, b) => (off(b) < off(a) ? b : a));
 }
-// Après vary (la piste mémorisée est déjà la piste réelle) : nom du terrain, fréquence de la Tour ou du Sol,
-// vent et QNH du METAR (`wx` = { wdir, wspd, qnh } ou null). Ni l'AFIS ni l'ATIS (fictifs) ne changent ;
-// le terrain d'arrivée de la navigation (`dest`) garde sa météo.
-function realTerrain(q, t, wx) {
+// Après vary (la piste mémorisée est déjà la piste réelle) : nom du terrain, fréquences de la Tour et du Sol (en-tête
+// et messages), vent et QNH du METAR (`wx` = { wdir, wspd, qnh } ou null), lettre de l'ATIS reconstitué (`letter`).
+// Ni l'AFIS ni l'ATIS fictifs ne changent ; le terrain d'arrivée de la navigation (`dest`) garde sa météo et son ATIS.
+const ATIS_WORD = /\b(information |ATIS « |ATIS ")(Alfa|Bravo|Charlie|Delta|Echo|Foxtrot|Golf|Hotel|India|Juliett|Kilo|Lima|Mike|November|Oscar|Papa|Quebec|Romeo|Sierra|Tango|Uniform|Victor|Whiskey|X-ray|Yankee|Zulu)\b/g;
+function realTerrain(q, t, wx, letter) {
   if (!t || /^(afis|atis)$/.test(q.cat || '')) return q;
   const en = q.lang === 'en', fq = f => (en ? f.replace(',', '.') : f);
+  // fréquence de la Tour citée dans un message (« contactez Tour 118,7 », « essai radio 118,7 ») ; la mauvaise
+  // réponse du QCM (117,8) devient la vraie fréquence aux deux premières décimales inversées
+  const [mhz, dec] = t.tour.split(','), i = dec[0] !== dec[1] ? 0 : 1;
+  const swapped = `${mhz},${dec.slice(0, i)}${dec[i + 1]}${dec[i]}${dec.slice(i + 2)}`;
+  const freqs = s => s.replace(/\b118,7(00)?(?!\d)/g, t.tour).replace(/\b117,8(00)?(?!\d)/g, swapped)
+    .replace(/\b118\.700\b/g, fq(t.tour)).replace(/\b117\.800\b/g, fq(swapped));
+  const atis = s => (letter && !q.dest ? s.replace(ATIS_WORD, `$1${letter}`) : s);
   const name = s => s.replace(/Saint-Exémery(?= (Tour|Tower|Sol|Ground))/g, t.radio).replace(/Saint-Exémery/g, t.nom);
   let wind = s => s, qnh = s => s;
   if (wx && !q.dest) {
@@ -124,10 +135,18 @@ function realTerrain(q, t, wx) {
       if (!q.wrong.map(sub).includes(sub(q.answers[0]))) qnh = sub; // sinon une mauvaise réponse deviendrait juste
     }
   }
-  const f = s => qnh(wind(name(s)));
-  const st = (q.st || '').replace(/^(Tour|Tower) 118[,.]700$/, (_, x) => `${t.radio} ${x} ${fq(t.tour)}`)
+  const f = s => atis(freqs(qnh(wind(name(s)))));
+  // sur ces aérodromes, le roulage se fait avec le Sol (fréquence SOL de l'AIP), le reste avec la Tour
+  const sol = /^(Tour|Tower) 118[,.]700$/.test(q.st || '') && /^\S+, (roulez|taxi)\b/i.test(q.atc);
+  const st = (q.st || '').replace(/^(Tour|Tower) 118[,.]700$/, (_, x) => (sol ? `${t.radio} ${en ? 'Ground' : 'Sol'} ${fq(t.sol)}` : `${t.radio} ${x} ${fq(t.tour)}`))
     .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => `${t.radio} ${x} ${fq(t.sol)}`);
-  return { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
+  const out = { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
+  if (q.elements) { // premier appel libre : le terrain et la lettre d'ATIS attendus suivent les substitutions
+    const key = normalize(t.radio).join('');
+    out.elements = q.elements.map(([l, re]) => [l, re === 'CS' ? re : re.replace('exemery', key)
+      .replace(/information [a-z]\\b/, letter && !q.dest ? `information ${letter[0].toLowerCase()}\\b` : '$&')]);
+  }
+  return out;
 }
 
 // QCM piégeux : mauvaises réponses fabriquées à partir de la bonne (une seule petite erreur), à la place
@@ -177,7 +196,10 @@ function parseMetar(raw) {
       m.wind = +r[2] === 0 ? { calm: true } : { dir: r[1], spd: +r[2], gust: r[3] && +r[3] };
     } else if (t === 'CAVOK') m.cavok = true;
     else if (/^\d{4}$/.test(t)) m.vis = +t;
-    else if ((r = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/))) m.clouds.push({ c: r[1], h: +r[2] * 100, type: r[3] });
+    // station automatique : « /// » = type de nuage non déterminé (on donne quantité et hauteur), « ///TCU » = nuage
+    // convectif détecté sans hauteur (on le nomme sans hauteur)
+    else if ((r = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU|\/\/\/)?$/))) m.clouds.push({ c: r[1], h: +r[2] * 100, type: r[3] === '///' ? null : r[3] });
+    else if ((r = t.match(/^\/\/\/(CB|TCU)$/))) m.clouds.push({ type: r[1] });
     else if ((r = t.match(/^(M?\d{2})\/(M?\d{2})$/))) m.temp = r[1], m.dew = r[2];
     else if ((r = t.match(/^Q(\d{4})$/))) m.qnh = String(+r[1]); // 0998 → 998
     else if (t === 'NOSIG') m.nosig = true;
@@ -206,7 +228,7 @@ function atisFromMetar(raw, t, piste, lang) {
   else {
     parts.push(`${en ? 'Visibility' : 'Visibilité'} ${visTxt}`);
     if (m.wx.length) parts.push(m.wx.map(x => ATIS_WX[x][k]).join(', ').replace(/^./, c => c.toUpperCase()));
-    if (m.clouds.length) parts.push(`${en ? 'Clouds' : 'Nuages'} ${m.clouds.map(c => `${ATIS_CLD[c.c][k]} ${c.h} ${en ? 'feet' : 'pieds'}${c.type ? ' ' + ATIS_TYPE[c.type][k] : ''}`).join(', ')}`);
+    if (m.clouds.length) parts.push(`${en ? 'Clouds' : 'Nuages'} ${m.clouds.map(c => (c.c ? `${ATIS_CLD[c.c][k]} ${c.h} ${en ? 'feet' : 'pieds'}${c.type ? ' ' + ATIS_TYPE[c.type][k] : ''}` : ATIS_TYPE[c.type][k])).join(', ')}`);
   }
   parts.push(`${en ? 'Temperature' : 'Température'} ${deg(m.temp)}, ${en ? 'dew point' : 'point de rosée'} ${deg(m.dew, true)}`, `QNH ${m.qnh}`);
   if (m.nosig) parts.push(en ? 'Trend NOSIG' : 'Tendance NOSIG');
