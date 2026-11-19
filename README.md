@@ -25,6 +25,13 @@ Réalisme :
 - **📡 Fréquence vivante** (Confirmé et au-delà) : avant certains messages, on entend un autre avion échanger avec le
   même poste (clairance et collationnement tirés des exercices vérifiés, autre indicatif, voix de pilote avec le bruit
   du moteur) ; en Expert+, son indicatif ressemble souvent au vôtre.
+- **📻 ATIS réel** (avec un terrain réel) : la série commence par l'ATIS du moment, mis en forme à partir du dernier
+  METAR selon le modèle du manuel DSNA (p. 214-218 : lettre, heure, piste, vent et rafales, visibilité ou CAVOK, temps
+  présent, nuages, température, QNH, NOSIG) ; si le METAR contient un élément sans formulation dans le manuel (vent
+  variable, RVR…), pas d'ATIS. Fréquences ATIS de l'AIP.
+- **Son radio** : le contrôleur répond après un court délai ; en Expert et Expert+, brèves pertes de signal ; les autres
+  avions, plus loin, arrivent plus faibles et plus bruités ; en mode « Pilote fautif », on entend le pilote collationner.
+- **⎵ Alternat** (mode oral) : maintenir la barre Espace pour parler, la relâcher pour finir, comme le bouton du manche.
 - **QCM en échange radio** : la réponse choisie est « transmise » avec une voix de pilote ; si le collationnement est
   faux, le contrôleur répond « Négatif je répète » suivi de la clairance correcte (SERA.14075 d)).
 - **🎲 Valeurs aléatoires** : un indicatif par série (affiché dans le bandeau radio), une piste et des codes

@@ -120,6 +120,8 @@ function start(sess = null) {
   terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === $('#terrain').value) || null;
   wx = terrain && wxOf(terrain.icao);
   if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir);
+  if (terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav'].includes($('#sujet').value)
+    && !['fautif', 'dictee'].includes(val('mode'))) pool.unshift(...liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')));
   stats();
   next();
 }
@@ -180,7 +182,34 @@ function chatterFor(q, c) {
   const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
   let v = vary(x, { cs, values: true, memo: { ...memo } });
   if (terrain) v = realTerrain(v, terrain, wx);
-  return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, cs, who: cs }];
+  return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
+}
+
+// ATIS du terrain réel, mis en forme à partir du dernier METAR (realism.js) : deux questions tirées au hasard.
+function liveAtis(lang) {
+  const a = atisFromMetar(wx.raw, terrain, memo.rw24, lang);
+  if (!a) return [];
+  const en = lang === 'en', other = terrain.pistes.find(x => x !== a.piste), rev = x => [...x].reverse().join('');
+  const pick = (good, arr) => [...new Set(arr.filter(x => x && x !== good))].sort(() => Math.random() - 0.5).slice(0, 3);
+  const letters = Object.values(ICAO), li = letters.indexOf(a.letter);
+  const qs = [
+    [en ? 'What is the information letter?' : 'Quelle est la lettre de l’information ?', a.letter,
+      pick(a.letter, [letters[(li + 1) % 26], letters[(li + 25) % 26], letters[(li + 2) % 26], letters[(li + 13) % 26]])],
+    [en ? 'Which runway is in use?' : 'Quelle est la piste en service ?', a.piste, pick(a.piste, [other, rev(a.piste), rev(other)])],
+    [en ? 'What is the QNH?' : 'Quel est le QNH ?', a.qnh, pick(a.qnh, [a.qnh.slice(0, -2) + rev(a.qnh.slice(-2)), String(+a.qnh + 10), String(+a.qnh - 1), '1013'])],
+  ];
+  if (a.wind) {
+    const [d, , s] = a.wind.split(' '), w = (dd, ss) => a.wind.replace(d, dd).replace(` ${s} `, ` ${ss} `);
+    qs.push([en ? 'What is the wind?' : 'Quel est le vent ?', a.wind,
+      pick(a.wind, [w(String((+d + 40) % 360 || 360).padStart(3, '0'), s), w(d, String(+s + 10)), w(rev(d), s)])]);
+  }
+  return qs.sort(() => Math.random() - 0.5).slice(0, 2).map(([q, ans, wrong]) => ({
+    live: true, prepared: true, cat: 'atis', lang, regle: 'vfr', who: 'ATIS', shown: series,
+    st: `${terrain.radio} ATIS ${en ? terrain.atis.replace(',', '.') : terrain.atis}`,
+    ctx: en ? `Listen to the current ${terrain.nom} ATIS before your first call.` : `Écoutez l’ATIS actuel de ${terrain.nom} avant votre premier appel.`,
+    atc: a.text, q, answers: [ans], wrong,
+    src: `METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218`,
+  }));
 }
 
 function stats() {
@@ -224,7 +253,7 @@ function next() {
     h += `<textarea id="txt" aria-label="${en ? 'Your answer' : 'Votre réponse'}" placeholder=""${cur.dictee ? (en ? 'The message…' : 'Le message…') : en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
       <div class="row"><button class="primary" id="go">Valider</button></div>`;
   } else {
-    h += SR ? `<div class="row"><button class="primary mic" id="mic">🎤 Appuyer pour parler</button><span id="heard" class="muted"></span></div>`
+    h += SR ? `<div class="row"><button class="primary mic" id="mic" title="Ou maintenez la barre Espace (alternat)">🎤 Appuyer pour parler · ⎵ Espace</button><span id="heard" class="muted"></span></div>`
       : '<p class="warn">La reconnaissance vocale n’est pas disponible dans ce navigateur. Utilisez Chrome ou Edge.</p>';
   }
   h += '<div id="fb" role="status" aria-live="polite"></div>';
@@ -236,7 +265,7 @@ function next() {
   $$('.opts button').forEach(b => b.addEventListener('click', () => pick(b)));
   $('#go')?.addEventListener('click', () => grade($('#txt').value));
   $('#mic')?.addEventListener('click', listenMic);
-  if (listen) say(); else prefetchVoice();
+  if (listen) say(undefined, 500 + Math.random() * 900); else prefetchVoice(); // le contrôleur ne parle pas instantanément
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
   tick();
 }
@@ -252,8 +281,9 @@ function tick() {
 // ── Voix du contrôleur ──
 // Niveaux : débit de la voix du système, souffle radio, distorsion de la radio, écoute seule imposée.
 // Débit proche d'un vrai contrôleur à tous les niveaux : la difficulté vient du bruit et des messages, pas de la vitesse.
-const LEVELS = { 1: { rate: 0.85, hiss: 0.004, drive: 1.2 }, 2: { rate: 0.95, hiss: 0.012, drive: 1.8 },
-  3: { rate: 1, hiss: 0.022, drive: 2.5, listen: true }, 4: { rate: 1.05, hiss: 0.032, drive: 3.2, listen: true } };
+// drops : nombre de brèves pertes de signal pendant un message (réception dégradée, lisibilité 3).
+const LEVELS = { 1: { rate: 0.85, hiss: 0.004, drive: 1.2, drops: 0 }, 2: { rate: 0.95, hiss: 0.012, drive: 1.8, drops: 0 },
+  3: { rate: 1, hiss: 0.022, drive: 2.5, drops: 1, listen: true }, 4: { rate: 1.05, hiss: 0.032, drive: 3.2, drops: 2, listen: true } };
 const NOVELTY = /bells|bubbles|boing|cellos|whisper|zarvox|trinoids|organ|jester|superstar|bad news|good news|wobble|bahh|albert|hysterical|deranged|pipe/i;
 const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
@@ -329,8 +359,12 @@ function neuralAudio(text, voiceId) {
   return audioCache.get(k);
 }
 const lineAudio = l => neuralAudio(speakable(l.text, l.lang), neuralVoice(l.lang, l.st, l.pilot && l.cs));
-const cardLines = (text = cur.cut ? cur.cut.heard : cur.atc) =>
-  [...(cur.chatter && !cur.chatterDone ? cur.chatter : []), { text, lang: cur.lang, st: cur.st, cut: !!cur.cut && text === cur.cut.heard }];
+function cardLines(text) {
+  const main = text ?? (cur.cut ? cur.cut.heard : cur.atc);
+  const lines = [...(cur.chatter && !cur.chatterDone ? cur.chatter : []), { text: main, lang: cur.lang, st: cur.st, cut: !!cur.cut && main === cur.cut.heard }];
+  if (text == null && cur.pilote) lines.push({ text: cur.pilote, lang: cur.lang, st: cur.st, pilot: true, cs: cur.shown }); // pilote fautif : on l'entend collationner
+  return lines;
+}
 // Préparation à l'avance (dans le worker, sans figer la page) dès que la carte s'affiche.
 function prefetchVoice() {
   if (!ttsWorker || !$('#neural').checked || !cur?.atc) return; // seulement si la voix est déjà utilisée (pas de téléchargement imposé)
@@ -338,16 +372,22 @@ function prefetchVoice() {
 }
 // Chaîne radio : bande passante 300–3000 Hz, présence vers 1,8 kHz, saturation douce, compression.
 const clipCurve = k => Float32Array.from({ length: 1024 }, (_, i) => Math.tanh(k * (i / 512 - 1)) / Math.tanh(k));
-function playRadio(buf, L, onend) {
+function playRadio(buf, L, onend, vol = 1) {
   const c = audio(), src = c.createBufferSource();
   const hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), pk = c.createBiquadFilter(), sh = c.createWaveShaper(), comp = c.createDynamicsCompressor();
   hp.type = 'highpass'; hp.frequency.value = 300; lp.type = 'lowpass'; lp.frequency.value = 3000;
   pk.type = 'peaking'; pk.frequency.value = 1800; pk.gain.value = 5; sh.curve = clipCurve(L.drive);
   if (!buf.peak) { buf.peak = 0.01; for (const x of buf.getChannelData(0)) buf.peak = Math.max(buf.peak, Math.abs(x)); }
-  const g = c.createGain(); g.gain.value = 0.8 / buf.peak; // volume normalisé avant la saturation
+  const g = c.createGain(), base = 0.8 * vol / buf.peak, t0 = c.currentTime + 0.05; // volume normalisé avant la saturation
+  g.gain.setValueAtTime(base, t0);
+  for (let i = 0; i < L.drops; i++) { // perte de signal : le souffle reste, la voix disparaît un instant
+    const t = t0 + 0.4 + Math.random() * Math.max(0.1, buf.duration - 0.8), d = 0.08 + Math.random() * 0.15;
+    g.gain.setValueAtTime(base, t); g.gain.linearRampToValueAtTime(base * 0.08, t + 0.03);
+    g.gain.setValueAtTime(base * 0.08, t + d); g.gain.linearRampToValueAtTime(base, t + d + 0.03);
+  }
   src.buffer = buf; src.onended = onend;
   src.connect(g).connect(hp).connect(lp).connect(pk).connect(sh).connect(comp).connect(c.destination);
-  src.start();
+  src.start(t0);
   return src;
 }
 function hush() { sayTok++; speechSynthesis.cancel(); try { saySrc?.stop(); } catch {} saySrc = null; stopHiss(); }
@@ -357,7 +397,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
 // Une transmission radio : { text, lang, st, pilot, cs, cut }. Un pilote émet avec plus de souffle et le bruit du moteur.
 function transmit(l, tok, L) {
   return new Promise(resolve => {
-    const hissV = l.pilot ? L.hiss * 1.5 + 0.006 : L.hiss;
+    const hissV = (l.pilot ? L.hiss * 1.5 + 0.006 : L.hiss) * (l.far ? 2 : 1);
     const tx = () => {
       if (tok !== sayTok) return;
       vstat(''); $('#led')?.classList.add('tx'); noise(hissV * 6, 0.08); hissNode = noise(hissV); // alternat + souffle porteuse
@@ -375,16 +415,17 @@ function transmit(l, tok, L) {
     lineAudio(l).then(buf => {
       if (tok !== sayTok) return resolve();
       tx();
-      setTimeout(() => { if (tok === sayTok) saySrc = playRadio(buf, L, rx); else resolve(); }, 150);
+      setTimeout(() => { if (tok === sayTok) saySrc = playRadio(buf, L, rx, l.far ? 0.55 : 1); else resolve(); }, 150);
     }).catch(() => { if (tok !== sayTok) return resolve(); vstat('Voix réaliste indisponible : voix du système.'); sys(); });
   });
 }
 // Plusieurs transmissions à la suite, avec un court silence entre deux, comme sur une vraie fréquence.
-async function play(lines) {
+async function play(lines, delay = 0) {
   hush();
   const tok = sayTok, L = LEVELS[val('niv')];
   vstat('Préparation de la voix…');
   if ($('#neural').checked) lines.forEach(l => lineAudio(l).catch(() => {})); // tout se prépare en parallèle
+  if (delay) { await pause(delay); if (tok !== sayTok) return; }
   for (const [i, l] of lines.entries()) {
     if (tok !== sayTok) return;
     if (i) await pause(350 + Math.random() * 700);
@@ -393,10 +434,10 @@ async function play(lines) {
 }
 // `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée), précédé la première fois
 // des échanges des autres avions sur la fréquence.
-function say(text) {
+function say(text, delay = 0) {
   const lines = cardLines(text);
   if (cur.chatter) cur.chatterDone = true;
-  return play(lines);
+  return play(lines, delay);
 }
 
 // Voix du système (voix installées sur l'appareil), sans filtre radio possible.
@@ -440,13 +481,16 @@ function transmitChoice(text, good) {
   play(lines);
 }
 
+let recNow = null; // reconnaissance en cours (alternat : relâcher Espace l'arrête)
 function listenMic() {
-  const rec = new SR(), mic = $('#mic');
+  if (recNow) return;
+  const rec = recNow = new SR(), mic = $('#mic');
+  noise(0.03, 0.06); // clic d'alternat
   rec.lang = cur.lang === 'en' ? 'en-GB' : 'fr-FR';
   mic.disabled = true; mic.classList.add('on'); mic.textContent = '🔴 À vous…';
   rec.onresult = e => grade(e.results[0][0].transcript);
   rec.onerror = e => { $('#heard').textContent = `Erreur micro : ${e.error}`; };
-  rec.onend = () => { stopRecording(); if (!answered) { mic.disabled = false; mic.classList.remove('on'); mic.textContent = '🎤 Réessayer'; } };
+  rec.onend = () => { recNow = null; stopRecording(); if (!answered) { mic.disabled = false; mic.classList.remove('on'); mic.textContent = '🎤 Réessayer'; } };
   rec.start();
   startRecording();
 }
@@ -501,7 +545,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   answered = true;
   const counted = !cur.retry;
   if (counted) {
-    if (!cur.notMine && !cur.cut && !cur.dictee && !cur.pilote) record(good); // ces cartes ne touchent pas la révision
+    if (!cur.notMine && !cur.cut && !cur.dictee && !cur.pilote && !cur.live) record(good); // ces cartes ne touchent pas la révision
     total++; if (good) { ok++; streak++; } else streak = 0;
     extra.best = Math.max(extra.best || 0, streak);
     if (!good && !cur.pilote) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
@@ -629,9 +673,18 @@ document.addEventListener('keydown', e => {
   }
   // raccourcis 1-4 : pas pendant une saisie ni quand une fenêtre (fiches, glossaire, stats) est ouverte
   if (/INPUT|SELECT/.test(e.target.tagName) || $('dialog[open]')) return;
+  if (e.code === 'Space' && $('#mic')) { // alternat : maintenir Espace pour parler
+    e.preventDefault();
+    if (!e.repeat && !answered && !$('#mic').disabled) listenMic();
+    return;
+  }
   if (!answered && /^[1-4]$/.test(e.key)) $$('.opts button')[e.key - 1]?.click();
 });
 
+document.addEventListener('keyup', e => {
+  if (e.code !== 'Space' || !$('#mic') || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || $('dialog[open]')) return;
+  e.preventDefault(); recNow?.stop(); // relâcher l'alternat
+});
 $('#sujet').insertAdjacentHTML('beforeend', Object.entries(SUJETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
 $('#terrain').insertAdjacentHTML('beforeend', TERRAINS.map(t => `<option value="${t.icao}">${t.nom} (${t.icao})</option>`).join(''));
 $$('.settings input, #sujet, #terrain').forEach(i => i.addEventListener('change', () => start()));

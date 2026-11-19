@@ -154,4 +154,66 @@ function trickyWrongs(q, shown, rnd = Math.random) {
   return wrong.length === 3 ? { ...q, wrong } : q;
 }
 
-if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs };
+// ATIS réel construit à partir du METAR, sur le modèle du manuel DSNA (p. 214-215) avec ses expressions
+// (temps présent et nuages p. 217-218, « CAVOK » p. 11, rafales p. 154). Renvoie null si le METAR contient un
+// élément que le manuel ne permet pas de formuler (vent variable, RVR, phénomène non listé…) : on n'invente rien.
+// Les tendances TEMPO / BECMG ne sont pas reprises (le manuel ne donne que « Tendance NOSIG »).
+const ATIS_WX = { RA: ['pluie', 'rain'], '+RA': ['pluie forte', 'heavy rain'], SHRA: ['averse de pluie', 'rain shower'],
+  BR: ['brume', 'mist'], FG: ['brouillard', 'fog'], BCFG: ['brouillard par bancs', 'fog patches'], MIFG: ['brouillard mince', 'shallow fog'],
+  FZFG: ['brouillard givrant', 'freezing fog'], DZ: ['bruine', 'drizzle'], FZDZ: ['bruine givrante', 'freezing drizzle'],
+  FZRA: ['pluie se congelant', 'freezing rain'], SN: ['neige', 'snow'], '+SN': ['neige forte', 'heavy snow'], TS: ['orage', 'thunderstorm'],
+  GR: ['grêle', 'hail'], GS: ['grésil', 'light hail'], FU: ['fumée', 'smoke'], SQ: ['grain', 'squall'] };
+const ATIS_CLD = { FEW: ['peu', 'few'], SCT: ['épars', 'scattered'], BKN: ['fragmenté', 'broken'], OVC: ['couvert', 'overcast'] };
+const ATIS_TYPE = { CB: ['cumulonimbus', 'cumulonimbus'], TCU: ['cumulonimbus bourgeonnant', 'towering cumulus'] };
+function parseMetar(raw) {
+  const tk = raw.trim().split(/\s+/), m = { wx: [], clouds: [] };
+  for (const t of tk.slice(2)) {
+    let r;
+    if (/^(TEMPO|BECMG|RMK)$/.test(t)) break;
+    if (t === 'AUTO' || t === 'COR' || /^\d{3}V\d{3}$/.test(t) || /^(NSC|NCD|SKC)$/.test(t)) continue;
+    if ((r = t.match(/^(\d{2})(\d{4})Z$/))) m.time = r[2], m.day = +r[1];
+    else if ((r = t.match(/^(\d{3}|VRB)(\d{2})(?:G(\d{2}))?KT$/))) {
+      if (r[1] === 'VRB' && +r[2] > 0) return null;
+      m.wind = +r[2] === 0 ? { calm: true } : { dir: r[1], spd: +r[2], gust: r[3] && +r[3] };
+    } else if (t === 'CAVOK') m.cavok = true;
+    else if (/^\d{4}$/.test(t)) m.vis = +t;
+    else if ((r = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/))) m.clouds.push({ c: r[1], h: +r[2] * 100, type: r[3] });
+    else if ((r = t.match(/^(M?\d{2})\/(M?\d{2})$/))) m.temp = r[1], m.dew = r[2];
+    else if ((r = t.match(/^Q(\d{4})$/))) m.qnh = String(+r[1]); // 0998 → 998
+    else if (t === 'NOSIG') m.nosig = true;
+    else if (ATIS_WX[t.replace(/^-/, '')]) m.wx.push(t.replace(/^-/, '')); // « faible » n'a pas de formulation : phénomène seul
+    else return null; // élément inconnu : pas d'ATIS
+  }
+  return m.time && m.wind && m.temp && m.qnh && (m.cavok || m.vis) ? m : null;
+}
+function atisFromMetar(raw, t, piste, lang) {
+  const m = parseMetar(raw);
+  if (!m) return null;
+  const en = lang === 'en', k = en ? 1 : 0, L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[(m.day * 24 + +m.time.slice(0, 2)) % 26];
+  const letter = { A: 'Alfa', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliett',
+    K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango', U: 'Uniform',
+    V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee', Z: 'Zulu' }[L];
+  const deg = (t, dew) => (t[0] === 'M' ? (en ? 'minus ' : 'moins ') : '') + (en && dew ? t.replace('M', '') : String(+t.replace('M', '')));
+  const w = m.wind;
+  const wind = w.calm ? (en ? 'Wind calm' : 'Vent calme')
+    : `${en ? 'Wind' : 'Vent'} ${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}${w.gust ? `, ${en ? 'gusting' : 'rafales'} ${w.gust} ${en ? 'knots' : 'nœuds'}` : ''}`;
+  const vis = m.vis >= 9999 ? 10000 : m.vis;
+  const visTxt = vis >= 5000 ? `${Math.floor(vis / 1000)} ${en ? 'kilometres' : 'kilomètres'}` : `${vis} ${en ? 'metres' : 'mètres'}`;
+  const hh = +m.time.slice(0, 2), hello = en ? (hh < 12 ? 'Good morning' : hh < 18 ? 'Good afternoon' : 'Good evening') : hh < 18 ? 'Bonjour' : 'Bonsoir';
+  const parts = [en ? `${hello}, this is ${t.radio} information ${letter}, recorded at ${m.time} UTC`
+    : `${hello}, ici ${t.radio} information ${letter}, enregistrée à ${m.time} UTC`,
+  `${en ? 'Runway in use' : 'Piste en service'} ${piste}`, wind];
+  if (m.cavok) parts.push('CAVOK');
+  else {
+    parts.push(`${en ? 'Visibility' : 'Visibilité'} ${visTxt}`);
+    if (m.wx.length) parts.push(m.wx.map(x => ATIS_WX[x][k]).join(', ').replace(/^./, c => c.toUpperCase()));
+    if (m.clouds.length) parts.push(`${en ? 'Clouds' : 'Nuages'} ${m.clouds.map(c => `${ATIS_CLD[c.c][k]} ${c.h} ${en ? 'feet' : 'pieds'}${c.type ? ' ' + ATIS_TYPE[c.type][k] : ''}`).join(', ')}`);
+  }
+  parts.push(`${en ? 'Temperature' : 'Température'} ${deg(m.temp)}, ${en ? 'dew point' : 'point de rosée'} ${deg(m.dew, true)}`, `QNH ${m.qnh}`);
+  if (m.nosig) parts.push(en ? 'Trend NOSIG' : 'Tendance NOSIG');
+  parts.push(en ? `Inform ${t.radio} on initial contact you have received information ${letter}`
+    : `Informez ${t.radio} dès le premier contact que vous avez reçu l'information ${letter}`);
+  return { text: parts.join('. ') + '.', letter, piste, qnh: m.qnh, wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
+}
+
+if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar };

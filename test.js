@@ -136,3 +136,13 @@ assert(ntr > 1000, 'pièges générés : ' + ntr);
 assert(!check('Je rappelle base main droite piste 24, F-GBCD', ['Je rappelle vent arrière main droite piste 24, F-GBCD']).pass, 'branche du circuit');
 assert(!check("Je maintiens après point d'attente piste 24, F-GBCD", ["Je maintiens avant point d'attente piste 24, F-GBCD"]).pass, 'avant / après');
 console.log(ntr, 'QCM piégeux OK');
+
+// ── ATIS réel construit depuis le METAR ──
+{ const t = { radio: 'Pau', icao: 'LFBP' };
+  const a = R.atisFromMetar('METAR LFBP 191000Z AUTO 24010KT 200V270 9999 FEW064 16/05 Q1009 NOSIG', t, '31', 'fr');
+  assert.strictEqual(a.text, "Bonjour, ici Pau information Yankee, enregistrée à 1000 UTC. Piste en service 31. Vent 240 degrés 10 nœuds. Visibilité 10 kilomètres. Nuages peu 6400 pieds. Température 16, point de rosée 5. QNH 1009. Tendance NOSIG. Informez Pau dès le premier contact que vous avez reçu l'information Yankee.");
+  assert.strictEqual(R.atisFromMetar('METAR LFBP 191800Z 00000KT CAVOK M02/M05 Q0998 TEMPO 4000 RA', t, '13', 'en').text,
+    'Good evening, this is Pau information Golf, recorded at 1800 UTC. Runway in use 13. Wind calm. CAVOK. Temperature minus 2, dew point minus 05. QNH 998. Inform Pau on initial contact you have received information Golf.');
+  assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z VRB03KT 9999 FEW030 12/05 Q1010', t, '31', 'fr'), null, 'vent variable : pas de formulation');
+  assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z 24010KT 0400 R13/0550N FG VV002 05/05 Q1020', t, '31', 'fr'), null, 'RVR : pas d’ATIS');
+  console.log('ATIS réel OK'); }
