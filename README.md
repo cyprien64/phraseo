@@ -22,6 +22,11 @@ signaux lumineux, premier appel libre / essai radio / répétitions, **AFIS et a
 n'apparaissent qu'aux niveaux Confirmé, Expert et Expert+.
 
 Réalisme :
+- **📡 Fréquence vivante** (Confirmé et au-delà) : avant certains messages, on entend un autre avion échanger avec le
+  même poste (clairance et collationnement tirés des exercices vérifiés, autre indicatif, voix de pilote avec le bruit
+  du moteur) ; en Expert+, son indicatif ressemble souvent au vôtre.
+- **QCM en échange radio** : la réponse choisie est « transmise » avec une voix de pilote ; si le collationnement est
+  faux, le contrôleur répond « Négatif je répète » suivi de la clairance correcte (SERA.14075 d)).
 - **🎲 Valeurs aléatoires** : un indicatif par série (affiché dans le bandeau radio), une piste et des codes
   transpondeur tirés au hasard et gardés pendant toute la série ; le vent tourne avec la piste.
 - **Indicatif abrégé** (F-CD) : utilisé par le contrôleur après le premier échange en « Vol complet », de temps en

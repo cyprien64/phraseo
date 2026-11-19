@@ -144,6 +144,7 @@ function prepare(q) {
   if (c.atc && !c.q && !c.elements) c = trickyWrongs(c, shown); // QCM piégeux : une seule petite erreur par choix
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
+  c.chatter = chatterFor(q, c);
   if (session) return c; // examen, défi, leçon : pas de piège radio
   if (modeNow() === 'fautif') { // le pilote collationne, juste ou faux : à vous de trouver
     const bad = Math.random() < 0.5;
@@ -166,6 +167,20 @@ function prepare(q) {
       : [`Roger, ${shown}`, `Répétez tout avant ${cut.word}, ${shown}`, `Wilco, ${shown}`],
     src: SERA('SERA.14075 c) 4)') };
   return c;
+}
+
+// Fréquence vivante : avant certains messages, un autre avion échange avec le même poste (message et collationnement
+// tirés des exercices vérifiés, avec un autre indicatif). Plus fréquent aux niveaux élevés.
+function chatterFor(q, c) {
+  const p = { 2: 0.25, 3: 0.4, 4: 0.6 }[val('niv')] || 0;
+  if (session || !c.atc || !q.st || Math.random() >= p) return null;
+  const others = QUESTIONS.filter(x => x.st === q.st && x.lang === q.lang && x.atc && !x.q && !x.elements && x.cat !== 'nav' && x !== q);
+  if (!others.length) return null;
+  const x = others[Math.floor(Math.random() * others.length)];
+  const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
+  let v = vary(x, { cs, values: true, memo: { ...memo } });
+  if (terrain) v = realTerrain(v, terrain, wx);
+  return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, cs, who: cs }];
 }
 
 function stats() {
@@ -194,6 +209,8 @@ function next() {
     ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? esc(wx.raw) : 'METAR indisponible : vent et QNH de l’exercice.'}
       <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}</span></p>` : ''}
     <p class="ctx">${esc(cur.ctx)}</p>`;
+  if (cur.chatter) h += `<div class="fil" aria-label="${en ? 'Other traffic on frequency' : 'Autres avions sur la fréquence'}">${cur.chatter.map(l =>
+    `<div class="bubble ${l.pilot ? 'pilot' : 'atc'} other"><div class="who">${esc(l.who)}</div><p class="msg ${listen ? 'hidden' : ''}" ${listen ? 'aria-hidden="true"' : ''}>${esc(l.text)}</p></div>`).join('')}</div>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
     <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button><span id="vstat" class="muted" role="status"></span>
@@ -263,24 +280,29 @@ function audio() {
   if (ac.state === 'suspended') ac.resume();
   return ac;
 }
-// Bruit blanc filtré dans la bande radio VHF (300–3000 Hz) ; `secs` = durée, sinon en boucle.
-function noise(vol, secs) {
+// Bruit blanc filtré : bande radio VHF (souffle) ou grave (moteur dans le micro du pilote) ; `secs` = durée, sinon en boucle.
+function noise(vol, secs, type = 'bandpass', freq = 1400) {
   const c = audio(), src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
   src.buffer = noiseBuf; src.loop = !secs;
-  f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.8; g.gain.value = vol;
+  f.type = type; f.frequency.value = freq; f.Q.value = 0.8; g.gain.value = vol;
   src.connect(f).connect(g).connect(c.destination);
   src.start();
   if (secs) src.stop(c.currentTime + secs);
   return src;
 }
-function stopHiss() { try { hissNode?.stop(); } catch {} hissNode = null; }
+let rumbleNode = null;
+function stopHiss() { for (const n of [hissNode, rumbleNode]) try { n?.stop(); } catch {} hissNode = rumbleNode = null; }
 
-// ── Voix réaliste : synthèse neuronale Piper (bibliothèque vits-web, calcul dans le navigateur) passée dans un
+// ── Voix réaliste : synthèse neuronale Piper (calcul dans tts-worker.js, sans figer la page) passée dans un
 // filtre radio VHF. Chaque voix est téléchargée une fois (≈ 60 Mo) puis gardée par le navigateur.
 // En cas d'échec (hors ligne, navigateur trop ancien) : voix du système.
 const NEURAL = { fr: ['fr_FR-tom-medium', 'fr_FR-siwis-medium'],
   en: ['en_GB-alan-medium', 'en_GB-cori-medium', 'en_GB-northern_english_male-medium'] };
-const neuralVoice = (lang, st) => { const vs = NEURAL[lang] || NEURAL.fr; return val('niv') === '1' ? vs[0] : vs[hash(st || '') % vs.length]; };
+// Le contrôleur garde la voix de son poste ; un pilote prend une autre voix que celle du contrôleur.
+function neuralVoice(lang, st, pilotCs) {
+  const vs = NEURAL[lang] || NEURAL.fr, atc = val('niv') === '1' ? 0 : hash(st || '') % vs.length;
+  return pilotCs ? vs[(atc + 1 + hash(pilotCs) % (vs.length - 1)) % vs.length] : vs[atc];
+}
 // Débit : celui, naturel, du modèle ; un peu plus posé en Débutant (durée × 1,12).
 const SLOW = { 1: 1.12, 2: 1, 3: 1, 4: 1 };
 let ttsWorker = null, ttsSeq = 0, saySrc = null, sayTok = 0;
@@ -306,10 +328,13 @@ function neuralAudio(text, voiceId) {
   }).catch(e => { audioCache.delete(k); throw e; }));
   return audioCache.get(k);
 }
+const lineAudio = l => neuralAudio(speakable(l.text, l.lang), neuralVoice(l.lang, l.st, l.pilot && l.cs));
+const cardLines = (text = cur.cut ? cur.cut.heard : cur.atc) =>
+  [...(cur.chatter && !cur.chatterDone ? cur.chatter : []), { text, lang: cur.lang, st: cur.st, cut: !!cur.cut && text === cur.cut.heard }];
 // Préparation à l'avance (dans le worker, sans figer la page) dès que la carte s'affiche.
 function prefetchVoice() {
   if (!ttsWorker || !$('#neural').checked || !cur?.atc) return; // seulement si la voix est déjà utilisée (pas de téléchargement imposé)
-  neuralAudio(speakable(cur.cut ? cur.cut.heard : cur.atc, cur.lang), neuralVoice(cur.lang, cur.st)).catch(() => {});
+  cardLines().forEach(l => lineAudio(l).catch(() => {}));
 }
 // Chaîne radio : bande passante 300–3000 Hz, présence vers 1,8 kHz, saturation douce, compression.
 const clipCurve = k => Float32Array.from({ length: 1024 }, (_, i) => Math.tanh(k * (i / 512 - 1)) / Math.tanh(k));
@@ -327,37 +352,61 @@ function playRadio(buf, L, onend) {
 }
 function hush() { sayTok++; speechSynthesis.cancel(); try { saySrc?.stop(); } catch {} saySrc = null; stopHiss(); }
 const vstat = t => { if ($('#vstat')) $('#vstat').textContent = t; };
+const pause = ms => new Promise(r => setTimeout(r, ms));
 
-// `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée).
-function say(text = cur.cut ? cur.cut.heard : cur.atc) {
+// Une transmission radio : { text, lang, st, pilot, cs, cut }. Un pilote émet avec plus de souffle et le bruit du moteur.
+function transmit(l, tok, L) {
+  return new Promise(resolve => {
+    const hissV = l.pilot ? L.hiss * 1.5 + 0.006 : L.hiss;
+    const tx = () => {
+      if (tok !== sayTok) return;
+      vstat(''); $('#led')?.classList.add('tx'); noise(hissV * 6, 0.08); hissNode = noise(hissV); // alternat + souffle porteuse
+      if (l.pilot) rumbleNode = noise(0.06, 0, 'lowpass', 170);
+    };
+    const rx = () => {
+      if (tok !== sayTok) return resolve();
+      $('#led')?.classList.remove('tx'); stopHiss(); noise(hissV * 6, 0.12); // squelch de fin d'émission
+      if (l.cut) noise(0.15, 1.2); // la fin du message est couverte par le bruit
+      resolve();
+    };
+    const sys = () => sysSay(l, L, tx, rx);
+    if (!$('#neural').checked) return sys();
+    ttsProgress = p => tok === sayTok && vstat(`Téléchargement de la voix (une seule fois) : ${Math.round(100 * p)} %`);
+    lineAudio(l).then(buf => {
+      if (tok !== sayTok) return resolve();
+      tx();
+      setTimeout(() => { if (tok === sayTok) saySrc = playRadio(buf, L, rx); else resolve(); }, 150);
+    }).catch(() => { if (tok !== sayTok) return resolve(); vstat('Voix réaliste indisponible : voix du système.'); sys(); });
+  });
+}
+// Plusieurs transmissions à la suite, avec un court silence entre deux, comme sur une vraie fréquence.
+async function play(lines) {
   hush();
-  const tok = sayTok, L = LEVELS[val('niv')], cut = cur.cut && text === cur.cut.heard, card = cur;
-  const tx = () => { $('#led')?.classList.add('tx'); noise(L.hiss * 6, 0.08); hissNode = noise(L.hiss); }; // alternat + souffle porteuse
-  const rx = () => {
-    if (tok !== sayTok) return;
-    $('#led')?.classList.remove('tx'); stopHiss(); noise(L.hiss * 6, 0.12); // squelch de fin d'émission
-    if (cut) noise(0.15, 1.2); // la fin du message est couverte par le bruit
-  };
-  if (!$('#neural').checked) return sysSay(text, L, tx, rx);
+  const tok = sayTok, L = LEVELS[val('niv')];
   vstat('Préparation de la voix…');
-  ttsProgress = p => tok === sayTok && vstat(`Téléchargement de la voix (une seule fois) : ${Math.round(100 * p)} %`);
-  neuralAudio(speakable(text, card.lang), neuralVoice(card.lang, card.st))
-    .then(buf => {
-      if (tok !== sayTok || card !== cur) return;
-      vstat(''); tx();
-      setTimeout(() => { if (tok === sayTok) saySrc = playRadio(buf, L, rx); }, 150);
-    })
-    .catch(() => { if (tok === sayTok) { vstat('Voix réaliste indisponible : voix du système.'); sysSay(text, L, tx, rx); } });
+  if ($('#neural').checked) lines.forEach(l => lineAudio(l).catch(() => {})); // tout se prépare en parallèle
+  for (const [i, l] of lines.entries()) {
+    if (tok !== sayTok) return;
+    if (i) await pause(350 + Math.random() * 700);
+    await transmit(l, tok, L);
+  }
+}
+// `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée), précédé la première fois
+// des échanges des autres avions sur la fréquence.
+function say(text) {
+  const lines = cardLines(text);
+  if (cur.chatter) cur.chatterDone = true;
+  return play(lines);
 }
 
 // Voix du système (voix installées sur l'appareil), sans filtre radio possible.
-function sysSay(text, L, tx, rx) {
-  const v = pickVoice(cur.lang, cur.st);
-  const u = new SpeechSynthesisUtterance(speakable(text, cur.lang));
-  u.lang = v?.lang || (cur.lang === 'en' ? 'en-GB' : 'fr-FR');
+function sysSay(l, L, tx, rx) {
+  const v = pickVoice(l.lang, l.pilot ? `${l.st}|${l.cs}` : l.st);
+  const u = new SpeechSynthesisUtterance(speakable(l.text, l.lang));
+  u.lang = v?.lang || (l.lang === 'en' ? 'en-GB' : 'fr-FR');
   if (v) u.voice = v;
   u.rate = L.rate;
-  u.pitch = 0.9 + (hash(cur.st || '') % 3) * 0.08;
+  u.pitch = 0.9 + (hash(l.pilot ? l.cs : l.st || '') % 3) * 0.08;
   u.onend = u.onerror = rx;
   tx();
   setTimeout(() => speechSynthesis.speak(u), 150);
@@ -369,10 +418,26 @@ function pick(b) {
   const good = !cur.notMine && b.dataset.o === cur.answers[0];
   $$('.opts button').forEach(x => { x.disabled = true; if (!cur.notMine && x.dataset.o === cur.answers[0]) x.classList.add('good'); });
   if (!good) b.classList.add('bad');
-  if (!cur.pilote) return feedback(good, { chosen: b.dataset.o });
+  if (!cur.pilote) { feedback(good, { chosen: b.dataset.o }); return transmitChoice(b.dataset.o, good); }
   const ans = check(cur.pilote, cur.orig.answers, cur.callsigns).ans; // variante la plus proche
   const d = cur.pilote === ans ? null : diffWords(cur.pilote, ans, cur.callsigns);
   feedback(good, { chosen: b.dataset.o, said: cur.pilote, diff: d, notes: d?.notes || [], ans });
+}
+
+// QCM réaliste : votre choix part sur la fréquence (avec votre voix de pilote) ; à un collationnement faux, le
+// contrôleur répond « Négatif je répète » suivi de la clairance correcte (SERA.14075 d)).
+function transmitChoice(text, good) {
+  if (session?.type === 'exam' || !cur.atc || cur.q) return;
+  const en = cur.lang === 'en', me = { text, lang: cur.lang, st: cur.st, pilot: true, cs: series };
+  const lines = [me], bubble = (cls, who, t) => `<div class="bubble ${cls}"><div class="who">${esc(who)}</div><p class="msg">${esc(t)}</p></div>`;
+  let h = bubble('pilot', en ? `You (${series})` : `Vous (${series})`, text);
+  if (!good && !cur.notMine && !cur.cut && !cur.dictee) {
+    const atc = `${cur.shown}, ${en ? 'negative I say again' : 'négatif je répète'}, ${cur.atc.replace(/^[^,]+,\s*/, '')}`;
+    lines.push({ text: atc, lang: cur.lang, st: cur.st });
+    h += bubble('atc', 'ATC', atc);
+  }
+  $('#fb').insertAdjacentHTML('beforebegin', `<div class="reply">${h}</div>`);
+  play(lines);
 }
 
 function listenMic() {
@@ -445,7 +510,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   if (session) session.log.push({ q: cur, good, chosen: chosen || said });
   if (session?.type === 'exam') return next(); // examen : correction seulement à la fin
   stats();
-  $('#atc')?.classList.remove('hidden'); $('#atc')?.removeAttribute('aria-hidden');
+  $$('#card .msg.hidden').forEach(x => { x.classList.remove('hidden'); x.removeAttribute('aria-hidden'); });
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
   let head = good ? '✅ Correct' : '❌ À revoir';
