@@ -16,7 +16,8 @@ assert(check('Approach one one niner decimal two five, F-GBCD', ['Approach 119.2
 
 
 // Chaque réponse de référence doit passer, chaque mauvaise réponse du QCM doit échouer.
-const QUESTIONS = eval(require('fs').readFileSync(__dirname + '/data.js', 'utf8') + ';QUESTIONS');
+const fs = require('fs');
+const QUESTIONS = eval(['data.js', 'data-plus.js'].map(f => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n') + ';QUESTIONS');
 for (const q of QUESTIONS.filter(q => !q.qcmOnly)) {
   q.answers.forEach(a => assert(check(a, q.answers).pass, 'référence refusée : ' + a));
   q.wrong.forEach(w => assert(!check(w, q.answers).pass, 'mauvaise réponse acceptée : ' + w));
@@ -32,6 +33,8 @@ assert.strictEqual(speakable('Tower 118.100, Approach 118.050', 'en'), 'Tower on
 assert.strictEqual(speakable('speed 200 knots, speed 250 knots', 'en'), 'speed two hundred knots, speed two five zero knots');
 assert.strictEqual(speakable('Info 125,7', 'fr'), 'Info 125 décimale 7');
 assert(check(radio('Roulons via Alfa, F-GBCD'), ['Roulons via Alfa, F-GBCD']).pass);
+assert.strictEqual(radio('rappelez avant W D, puis E N.'), 'rappelez avant Whiskey Delta, puis Echo November.');
+assert.deepStrictEqual(normalize("d'attente l'ILS j'atterris"), ['attente', 'ils', 'atterris']);
 console.log('voix OK');
 
 const { diffWords } = require('./match.js');

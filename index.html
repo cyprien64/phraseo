@@ -53,6 +53,9 @@
         <input type="radio" name="niv" id="n-2" value="2"><label for="n-2" title="Débit normal, souffle radio, messages combinés">Confirmé</label>
         <input type="radio" name="niv" id="n-3" value="3"><label for="n-3" title="Débit de contrôleur, parasites, écoute seule imposée">Expert</label>
       </fieldset>
+      <label class="sujet">Sujet
+        <select id="sujet"><option value="all">Tous les sujets</option></select>
+      </label>
       <div class="toggles">
         <label class="tog"><input type="checkbox" id="ecoute"> 🎧 Écoute seule (message masqué)</label>
         <label class="tog"><input type="checkbox" id="chrono"> 🛫 Vol complet (ordre chronologique)</label>
@@ -72,6 +75,7 @@
 
   <script src="match.js"></script>
   <script src="data.js"></script>
+  <script src="data-plus.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

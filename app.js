@@ -25,7 +25,8 @@ const PHASES = [[/Prévol|Delivery|mise en route|start-up/i, 'Clairance IFR'],
   [/./, 'Approche / en route']];
 const cats = q => q.regle === 'alpha' ? [['Thème', 'Alphabet OACI']] : [
   ['Langue', q.lang === 'en' ? 'Anglais' : 'Français'], ['Règles', q.regle.toUpperCase()],
-  ['Phase', q.st ? PHASES.find(([r]) => r.test(`${q.st} ${q.atc} ${q.answers[0]}`))[1] : 'Urgences & théorie']];
+  ['Sujet / phase', q.cat ? SUJETS[q.cat]
+    : q.st ? PHASES.find(([r]) => r.test(`${q.st} ${q.atc} ${q.answers[0]}`))[1] : 'Théorie (codes, collationnement…)']];
 
 function showStats() {
   const g = {};
@@ -44,8 +45,8 @@ function showStats() {
 }
 
 function start() {
-  const l = val('lang'), r = val('regle'), m = val('mode'), chrono = $('#chrono').checked;
-  pool = QUESTIONS.filter(q =>
+  const l = val('lang'), r = val('regle'), m = val('mode'), chrono = $('#chrono').checked, su = $('#sujet').value;
+  pool = QUESTIONS.filter(q => (su === 'all' || r === 'alpha' || (q.cat || 'base') === su) &&
     (r === 'err' ? isErr(q) && (l === 'all' || q.regle === 'alpha' || q.lang === l)
       : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && (l === 'all' || q.lang === l))
     && (m === 'qcm' || !q.qcmOnly) && (!chrono || r === 'alpha' || r === 'err' || q.st) && (q.niv || 1) <= +val('niv'));
@@ -77,7 +78,7 @@ function next() {
     <span class="prog">${idx} / ${pool.length}</span></div>
     <div class="tags"><span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     <p class="ctx">${esc(cur.ctx)}</p>`;
-  if (cur.atc) h += `<div class="bubble atc"><div class="who">ATC</div>
+  if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc">${esc(cur.atc)}</p>
     <button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button></div>`;
   h += `<p class="q">${esc(q)}</p>`;
@@ -226,7 +227,8 @@ document.addEventListener('keydown', e => {
   if (!answered && /^[1-4]$/.test(e.key)) $$('.opts button')[e.key - 1]?.click();
 });
 
-$$('.settings input').forEach(i => i.addEventListener('change', start));
+$('#sujet').insertAdjacentHTML('beforeend', Object.entries(SUJETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join(''));
+$$('.settings input, #sujet').forEach(i => i.addEventListener('change', start));
 $('#statsBtn').addEventListener('click', showStats);
 $('#reset').addEventListener('click', () => {
   if (!confirm('Effacer toute votre progression enregistrée sur cet appareil ?')) return;

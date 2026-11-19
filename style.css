@@ -99,3 +99,5 @@ dialog td.num { text-align: right; white-space: nowrap; }
 .meter { width: 120px; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
 .meter div { height: 100%; }
 @media (max-width: 520px) { .meter { width: 60px; } .stats { flex-wrap: wrap; justify-content: flex-end; } }
+.sujet { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.sujet select { display: block; margin-top: 4px; text-transform: none; letter-spacing: 0; font: inherit; font-size: .9rem; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }

@@ -16,7 +16,8 @@ const spell = s => [...s].map(c => ICAO[c] || c).join(' ');
 // Texte tel qu'il est prononcé à la radio : indicatifs et lettres isolées épelés en OACI.
 function radio(t) {
   return t.replace(/\b([A-Z])-([A-Z]{2,4})\b/g, (_, a, b) => `${ICAO[a]} ${spell(b)}`)
-    .replace(/\b(\d+)([A-Z])\b/g, (_, n, l) => `${n} ${ICAO[l]}`);
+    .replace(/\b(\d+)([A-Z])\b/g, (_, n, l) => `${n} ${ICAO[l]}`)
+    .replace(/(^|[\s,(])([A-Z])(?=$|[\s,.)])/g, (_, b, l) => `${b}${ICAO[l]}`); // points et lettres isolés : « W D »
 }
 
 // Pour la synthèse vocale, selon le Manuel de phraséologie DSNA (10e éd.) p. 13-17 :
@@ -42,7 +43,7 @@ function speakable(t, lang) {
 }
 
 const ABBR ={ fl: 'flight level', ft: 'feet', kt: 'knots', kts: 'knots' };
-const DROP = new Set(['decimal', 'virgule', 'and', 'et', 'the', 'le', 'la', 'les', 'to', 'de', 'du', 'd', 'l']);
+const DROP = new Set(['decimal', 'virgule', 'and', 'et', 'the', 'le', 'la', 'les', 'to', 'de', 'du']);
 
 const isNumTok = t => /^\d+$/.test(t) || t === 'H' || t === 'K';
 
@@ -58,7 +59,7 @@ function evalNum(g) {
 }
 
 function normalize(s) {
-  const toks = s.toLowerCase().replace(/œ/g, 'oe').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const toks = s.toLowerCase().replace(/\b(?:[dljmnst]|qu)['’]/g, '').replace(/œ/g, 'oe').normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/(\d)[.,](\d)/g, '$1$2').replace(/-/g, '')
     .replace(/([a-z])(\d)/g, '$1 $2').replace(/(\d)([a-z])/g, '$1 $2')
     .replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean)
@@ -105,7 +106,7 @@ function check(user, answers, callsign = 'fgbcd') {
     const ue = strip(u), ee = strip(e);
     // nombres, sens de virage et branches du circuit : la moindre erreur rend la réponse fausse
     const nums = a => a.filter(t => /^\d+$/.test(t)
-      || /^(gauche|droite|left|right|base|arriere|downwind|final|finale|traversier|crosswind)$/.test(t)).join(',');
+      || /^(gauche|droite|left|right|base|arriere|downwind|final|finale|traversier|crosswind|haut|bas|above|below|monte|descends|climb|climbing|descend|descending)$/.test(t)).join(',');
     const numbersOk = nums(ue) === nums(ee);
     const score = 1 - lev(ue, ee) / Math.max(ue.length, ee.length, 1);
     const r = { pass: csOk && numbersOk && score >= 0.85, score, numbersOk, csOk, ans };

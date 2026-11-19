@@ -11,6 +11,12 @@ Options : **Écoute seule** (le message ATC est masqué et lu à voix haute, com
 **Vol complet** (exercices dans l'ordre d'un vol : Sol → Tour → Info/Approche → atterrissage),
 thème **Alphabet OACI**.
 
+Sujets (filtre « Sujet ») : exercices de base, situations au sol (traversée de piste, maintien de position,
+alignement conditionnel, annulation de décollage), information de trafic, transit VFR et VFR spécial,
+IFR avancé (STAR, attente, approche à vue, approche interrompue ou annulée, contraintes de niveau), ATIS,
+urgences et pannes (MAYDAY, PAN PAN, panne d'émission, carburant minimal), expressions conventionnelles,
+signaux lumineux. Les exercices à plusieurs éléments n'apparaissent qu'aux niveaux Confirmé et Expert.
+
 Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
 **Expert** (débit de contrôleur, parasites, écoute seule imposée). La voix utilise les voix installées sur l'appareil :
 pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé).
