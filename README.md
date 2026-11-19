@@ -56,7 +56,16 @@ Apprentissage :
 - **📝 Dictée** : un message long est lu (texte masqué), on le note en entier, la correction se fait mot à mot.
 - **📖 Glossaire FR ⇄ EN** : expressions du manuel, avec recherche et cartes à retourner.
 - **🏅 Badges** et **🧭 bilan personnalisé** (après 50 réponses : vos erreurs les plus fréquentes et quoi travailler),
-  dans 📊 Stats.
+  dans 📊 Stats, avec un bouton **🎯 S'entraîner** qui lance une série ciblée sur l'erreur (QNH, piste, cap…).
+
+Pratique :
+- **💾 Exporter / 📂 Importer** la progression (dans 📊 Stats) : un fichier à transférer d'un appareil à l'autre, sans compte.
+- **Thème** auto / clair / sombre et **taille du texte** (A− / A+), mémorisés sur l'appareil.
+- **🖨️ Imprimer / PDF** : fiches de cours et glossaire, depuis les fenêtres Fiches ou Glossaire.
+- **▶️ Ma réponse** (mode oral) : réécouter son propre collationnement à côté du message du contrôleur ;
+  l'enregistrement reste dans la page, rien n'est envoyé ni sauvegardé.
+- **Accessibilité** : contrastes vérifiés (≥ 4,5:1 en clair et en sombre), navigation au clavier, étiquettes pour
+  les lecteurs d'écran, langue de chaque exercice indiquée, animations coupées si le système le demande.
 
 ## Sources
 Chaque exercice a été vérifié et indique la page ou l'article exact :

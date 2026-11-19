@@ -253,6 +253,26 @@ const PLUS = [
     wrong: ['F-GBCD, mayday fuel', 'F-GBCD, pan pan', 'F-GBCD, low fuel, roger'], src: MANUEL(256) },
 ];
 
+// ───────── COLLATIONNEMENTS AVEC QNH (Manuel p. 38 et 114) ─────────
+PLUS.push(
+  { lang: 'fr', regle: 'ifr', st: 'Prévol 121,925', ctx: 'Vous avez demandé les paramètres pour le départ.',
+    atc: 'F-GBCD, piste 24, vent 240 degrés 10 nœuds, visibilité 5 kilomètres, température 16, QNH 1020, niveau de transition 60, il est 10 heures 22.',
+    answers: ['Piste 24, QNH 1020, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Piste 24, F-GBCD', 'Piste 24, QNH 1002, F-GBCD'], src: MANUEL(38) },
+  { lang: 'en', regle: 'ifr', st: 'Delivery 121.925', ctx: 'You requested departure information.',
+    atc: 'F-GBCD, runway 24, wind 240 degrees 10 knots, visibility 5 kilometres, temperature 16, QNH 1020, transition level 60, time 1022.',
+    answers: ['Runway 24, QNH 1020, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Runway 24, F-GBCD', 'Runway 24, QNH 1002, F-GBCD'], src: MANUEL(38) },
+  { cat: 'ifr', niv: 2, lang: 'fr', regle: 'ifr', st: 'Approche 120,850', ctx: 'En arrivée, retour sur la STAR.',
+    atc: 'F-GBCD, procédez direct KOLIX, rejoignez STAR et descendez via STAR 3500 pieds QNH 1012.',
+    answers: ['Direct KOLIX, je rejoins et descends via STAR 3500 pieds QNH 1012, F-GBCD'],
+    wrong: ['Direct KOLIX, F-GBCD', 'Roger, F-GBCD', 'Direct KOLIX, je rejoins et descends via STAR 3500 pieds QNH 1021, F-GBCD'], src: MANUEL(114) },
+  { cat: 'ifr', niv: 2, lang: 'en', regle: 'ifr', st: 'Approach 120.850', ctx: 'Arriving, back onto the STAR.',
+    atc: 'F-GBCD, proceed direct KOLIX, rejoin STAR and descend via STAR 3500 feet QNH 1012.',
+    answers: ['Direct KOLIX, rejoining and descending via STAR 3500 feet QNH 1012, F-GBCD'],
+    wrong: ['Direct KOLIX, F-GBCD', 'Roger, F-GBCD', 'Direct KOLIX, rejoining and descending via STAR 3500 feet QNH 1021, F-GBCD'], src: MANUEL(114) },
+);
+
 // ───────── RÉALISME : premier appel libre, erreur du contrôleur, essai radio, répétitions ─────────
 // `elements` : éléments obligatoires, dans l'ordre du modèle du manuel (regex sur le texte normalisé, 'CS' = indicatif).
 PLUS.push(

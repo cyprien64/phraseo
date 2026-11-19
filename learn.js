@@ -76,8 +76,16 @@ const CONSEILS = {
 function bilan(tally = {}, answered = 0, min = 50) {
   if (answered < min) return { pret: false, reste: min - answered };
   const top = Object.entries(tally).filter(([k, n]) => n > 0 && CONSEILS[k]).sort((a, b) => b[1] - a[1]).slice(0, 3)
-    .map(([k, n]) => ({ titre: CONSEILS[k][0], conseil: CONSEILS[k][1], fiche: CONSEILS[k][2], n }));
+    .map(([k, n]) => ({ key: k, titre: CONSEILS[k][0], conseil: CONSEILS[k][1], fiche: CONSEILS[k][2], n }));
   return { pret: true, top };
+}
+
+// Entraînement ciblé : collationnements qui contiennent l'élément souvent raté (tous les collationnements sinon).
+const CIBLES = { qnh: /QNH/, piste: /piste|runway/i, transpondeur: /transpondeur|squawk/i, niveau: /niveau|level|pieds|feet/i,
+  cap: /\bcap \d|heading/i, sens: /gauche|droite|left|right/i };
+function cible(questions, kind) {
+  const re = CIBLES[kind];
+  return questions.filter(q => q.atc && !q.q && q.regle !== 'alpha' && (!re || re.test(`${q.atc} ${q.answers[0]}`)));
 }
 
 // Défi du jour : les mêmes questions pour tout le monde, tirées avec la date comme graine.
@@ -110,4 +118,4 @@ function badges(questions, prog, extra) {
   ].map(([icon, nom, desc, ok]) => ({ icon, nom, desc, ok }));
 }
 
-if (typeof module !== 'undefined') module.exports = { leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, BOX_DAYS, DAY };
+if (typeof module !== 'undefined') module.exports = { leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, cible, BOX_DAYS, DAY };

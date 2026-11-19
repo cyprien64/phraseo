@@ -23,30 +23,39 @@
     <button id="defiBtn">🏆 Défi du jour</button>
     <button id="fichesBtn">📚 Fiches de cours</button>
     <button id="glossBtn">📖 Glossaire FR ⇄ EN</button>
+    <span class="disp" role="group" aria-label="Affichage">
+      <label>Thème <select id="theme"><option value="auto">Auto</option><option value="light">Clair</option><option value="dark">Sombre</option></select></label>
+      <button id="smaller" aria-label="Réduire la taille du texte">A−</button><span id="sizeVal" aria-live="polite">100 %</span><button id="bigger" aria-label="Agrandir la taille du texte">A+</button>
+    </span>
   </nav>
 
-  <dialog id="fiches">
-    <h2>📚 Fiches de cours</h2>
+  <dialog id="fiches" aria-labelledby="fichesT">
+    <h2 id="fichesT">📚 Fiches de cours</h2>
     <div id="ficheNav" class="fnav"></div>
     <div id="ficheBody"></div>
-    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
+    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button class="printBtn">🖨️ Imprimer / PDF (fiches + glossaire)</button></div>
   </dialog>
 
-  <dialog id="glossaire">
-    <h2>📖 Glossaire FR ⇄ EN</h2>
+  <dialog id="glossaire" aria-labelledby="glossT">
+    <h2 id="glossT">📖 Glossaire FR ⇄ EN</h2>
     <p class="muted">Expressions du Manuel de phraséologie DSNA (page indiquée).</p>
-    <div class="row"><input id="glossQ" type="search" placeholder="Chercher…">
+    <div class="row"><input id="glossQ" type="search" placeholder="Chercher…" aria-label="Chercher une expression">
       <button id="listeBtn">Liste</button><button id="cartesBtn">🃏 Carte au hasard</button></div>
-    <div id="glossBody"></div>
-    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
+    <div id="glossBody" aria-live="polite"></div>
+    <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button class="printBtn">🖨️ Imprimer / PDF</button></div>
   </dialog>
 
-  <dialog id="stats">
-    <h2>📊 Mes statistiques</h2>
+  <dialog id="stats" aria-labelledby="statsT">
+    <h2 id="statsT">📊 Mes statistiques</h2>
     <p class="muted">Enregistré sur cet appareil uniquement.</p>
     <div id="statsBody"></div>
     <div class="row">
       <button class="primary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button id="exportBtn">💾 Exporter ma progression</button>
+      <button id="importBtn">📂 Importer</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
       <button id="reset">Réinitialiser</button>
     </div>
   </dialog>
@@ -89,8 +98,8 @@
       </div>
     </section>
 
-    <div class="bar"><div id="prog"></div></div>
-    <section id="card" class="card" aria-live="polite"></section>
+    <div class="bar" role="progressbar" aria-label="Progression de la série" aria-valuemin="0" aria-valuemax="100" id="bar"><div id="prog"></div></div>
+    <section id="card" class="card"></section>
     <p class="muted keys">Raccourcis : <kbd>1</kbd>–<kbd>4</kbd> choisir · <kbd>Entrée</kbd> valider / suivant</p>
   </main>
 
@@ -99,6 +108,7 @@
     Règlement (UE) 923/2012 SERA (version consolidée du 1er mai 2025) ; la page ou l'article est indiqué sous chaque correction.
     Indicatif, terrains et fréquences fictifs. Outil d'entraînement : seuls les documents officiels en vigueur font foi.
   </footer>
+  <div id="print" aria-hidden="true"></div>
 
   <script src="match.js"></script>
   <script src="realism.js"></script>
@@ -107,5 +117,6 @@
   <script src="courses.js"></script>
   <script src="learn.js"></script>
   <script src="app.js"></script>
+  <script src="extras.js"></script>
 </body>
 </html>

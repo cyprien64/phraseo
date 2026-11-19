@@ -52,7 +52,8 @@ function showStats() {
     .filter(([, r, n]) => n >= 5 && r < 0.7).sort((x, y) => x[1] - y[1]).slice(0, 2);
   const bil = !b.pret ? `<p class="muted">Bilan disponible après 50 réponses (encore ${b.reste}).</p>`
     : `${b.top.length ? `<ul>${b.top.map(t => `<li><strong>${esc(t.titre)}</strong> (${t.n} fois) : ${esc(t.conseil)}
-        <button class="ghost" data-fiche="${t.fiche}">📚 Fiche</button></li>`).join('')}</ul>` : '<p>Aucune erreur type relevée. Continuez !</p>'}
+        <button class="ghost" data-cible="${t.key}">🎯 S’entraîner</button> <button class="ghost" data-fiche="${t.fiche}">📚 Fiche</button></li>`).join('')}</ul>`
+        : '<p>Aucune erreur type relevée. Continuez !</p>'}
       ${weak.length ? `<p>À travailler en priorité : ${weak.map(([c, r]) => `<strong>${esc(c)}</strong> (${Math.round(r * 100)} %)`).join(', ')}.</p>` : ''}
       <p class="muted">${QUESTIONS.filter(isDue).length} exercice(s) à réviser aujourd’hui (thème « 📅 À réviser »).</p>`;
   $('#statsBody').innerHTML = `<h3>🧭 Bilan personnalisé</h3>${bil}
@@ -60,6 +61,7 @@ function showStats() {
       `<span class="badge ${x.ok ? 'got' : ''}" title="${esc(x.desc)}">${x.icon} ${esc(x.nom)}<small>${esc(x.desc)}</small></span>`).join('')}</div>
     <h3>📊 Réussite par catégorie</h3><table>${rows}</table>`;
   $$('#statsBody [data-fiche]').forEach(x => x.addEventListener('click', () => { $('#stats').close(); openFiche(x.dataset.fiche); }));
+  $$('#statsBody [data-cible]').forEach(x => x.addEventListener('click', () => { $('#stats').close(); start({ type: 'cible', kind: x.dataset.cible }); }));
   $('#stats').showModal();
 }
 
@@ -67,7 +69,8 @@ function showStats() {
 let session = null, timer = null;
 const EXAM_N = 20, EXAM_MIN = 15;
 const today = () => new Date().toISOString().slice(0, 10);
-const modeNow = () => session ? 'qcm' : val('mode');
+// examen et défi en QCM ; l'entraînement ciblé garde le mode choisi
+const modeNow = () => session && session.type !== 'cible' ? 'qcm' : val('mode');
 const words = s => s.split(' ').length;
 
 function start(sess = null) {
@@ -75,6 +78,9 @@ function start(sess = null) {
   const l = val('lang'), r = val('regle'), m = modeNow(), chrono = !session && $('#chrono').checked, su = $('#sujet').value;
   const langOk = q => l === 'all' || q.regle === 'alpha' || q.lang === l;
   if (session?.type === 'defi') pool = dailyPick(QUESTIONS, today(), 10); // identique pour tout le monde
+  else if (session?.type === 'cible') // entraînement ciblé sur un type d'erreur du bilan
+    pool = cible(QUESTIONS, session.kind).filter(q => langOk(q) && (m === 'qcm' || !q.qcmOnly) && (q.niv || 1) <= +val('niv'))
+      .sort(() => Math.random() - 0.5).slice(0, 15);
   else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
     pool = QUESTIONS.filter(q => langOk(q) && (q.niv || 1) <= 2).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
   else {
@@ -131,11 +137,13 @@ function prepare(q) {
 function stats() {
   $('#score').textContent = `${ok} / ${total}`;
   $('#streak').textContent = `🔥 ${streak}`;
-  $('#prog').style.width = pool.length ? `${100 * idx / pool.length}%` : '0';
+  const pc = pool.length ? Math.round(100 * idx / pool.length) : 0;
+  $('#prog').style.width = pc + '%'; $('#bar').setAttribute('aria-valuenow', pc);
 }
 
 function next() {
-  speechSynthesis.cancel(); stopHiss();
+  speechSynthesis.cancel(); stopHiss(); stopRecording();
+  if (myAudio) { URL.revokeObjectURL(myAudio); myAudio = null; }
   if (!pool.length) { $('#card').innerHTML = '<p class="ctx">Aucune question pour ces réglages.</p>'; return; }
   if (idx >= pool.length) return end();
   cur = prepare(pool[idx++]);
@@ -144,13 +152,14 @@ function next() {
   const mode = modeNow(), en = cur.lang === 'en';
   const listen = ($('#ecoute').checked || LEVELS[val('niv')].listen || cur.dictee) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
-  const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc' : `🏆 Défi du ${today()}`}</span>` : '';
+  const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc'
+    : session.type === 'cible' ? `🎯 ${esc(CONSEILS[session.kind]?.[0] || 'Entraînement ciblé')}` : `🏆 Défi du ${today()}`}</span>` : '';
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
     <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
     <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
-    <p class="msg ${listen ? 'hidden' : ''}" id="atc">${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
+    <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
     <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button>
     ${$('#busy').checked ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
   h += `<p class="q">${esc(q)}</p>`;
@@ -158,14 +167,15 @@ function next() {
     const opts = [cur.answers[0], ...cur.wrong].sort(() => Math.random() - 0.5);
     h += `<div class="opts">${opts.map((o, i) => `<button data-o="${esc(o)}"><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`).join('')}</div>`;
   } else if (mode === 'ecrit' || mode === 'dictee') {
-    h += `<textarea id="txt" placeholder="${cur.dictee ? (en ? 'The message…' : 'Le message…') : en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
+    h += `<textarea id="txt" aria-label="${en ? 'Your answer' : 'Votre réponse'}" placeholder=""${cur.dictee ? (en ? 'The message…' : 'Le message…') : en ? 'Your readback…' : 'Votre collationnement…'}"></textarea>
       <div class="row"><button class="primary" id="go">Valider</button></div>`;
   } else {
     h += SR ? `<div class="row"><button class="primary mic" id="mic">🎤 Appuyer pour parler</button><span id="heard" class="muted"></span></div>`
       : '<p class="warn">La reconnaissance vocale n’est pas disponible dans ce navigateur. Utilisez Chrome ou Edge.</p>';
   }
-  h += '<div id="fb"></div>';
+  h += '<div id="fb" role="status" aria-live="polite"></div>';
   $('#card').innerHTML = h;
+  $('#card').lang = cur.regle === 'alpha' ? 'fr' : cur.lang; // prononciation correcte par les lecteurs d'écran
 
   $('#hear')?.addEventListener('click', () => say());
   $('#nm')?.addEventListener('click', () => { if (!answered) feedback(!!cur.notMine, { nm: true }); });
@@ -260,8 +270,37 @@ function listenMic() {
   mic.disabled = true; mic.classList.add('on'); mic.textContent = '🔴 À vous…';
   rec.onresult = e => grade(e.results[0][0].transcript);
   rec.onerror = e => { $('#heard').textContent = `Erreur micro : ${e.error}`; };
-  rec.onend = () => { if (!answered) { mic.disabled = false; mic.classList.remove('on'); mic.textContent = '🎤 Réessayer'; } };
+  rec.onend = () => { stopRecording(); if (!answered) { mic.disabled = false; mic.classList.remove('on'); mic.textContent = '🎤 Réessayer'; } };
   rec.start();
+  startRecording();
+}
+
+// ── Enregistrement de sa propre voix (mode oral), pour la réécouter à côté du message du contrôleur ──
+// L'enregistrement reste dans la page : rien n'est envoyé ni sauvegardé.
+let mediaRec = null, myAudio = null;
+function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return;
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    const chunks = [], card = cur;
+    mediaRec = new MediaRecorder(stream);
+    mediaRec.ondataavailable = e => chunks.push(e.data);
+    mediaRec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      if (card !== cur) return; // carte déjà changée
+      if (myAudio) URL.revokeObjectURL(myAudio);
+      myAudio = URL.createObjectURL(new Blob(chunks, { type: mediaRec.mimeType }));
+      showMyVoice();
+    };
+    mediaRec.start();
+  }).catch(() => {}); // micro refusé : la reconnaissance vocale continue sans enregistrement
+}
+function stopRecording() { if (mediaRec?.state === 'recording') mediaRec.stop(); }
+function showMyVoice() {
+  const row = $('#fb .row');
+  if (!row || !myAudio || $('#myVoice')) return;
+  row.insertAdjacentHTML('afterbegin', '<button id="myVoice">▶️ Ma réponse</button><button id="atcVoice">🔊 Le contrôleur</button>');
+  $('#myVoice').addEventListener('click', () => { speechSynthesis.cancel(); new Audio(myAudio).play(); });
+  $('#atcVoice').addEventListener('click', () => say(cur.cut ? cur.full.atc : cur.atc));
 }
 
 function grade(text) {
@@ -295,7 +334,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   if (session) session.log.push({ q: cur, good, chosen: chosen || said });
   if (session?.type === 'exam') return next(); // examen : correction seulement à la fin
   stats();
-  $('#atc')?.classList.remove('hidden');
+  $('#atc')?.classList.remove('hidden'); $('#atc')?.removeAttribute('aria-hidden');
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
   let head = good ? '✅ Correct' : '❌ À revoir';
@@ -317,6 +356,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     <button class="primary" id="nx">Suivant →</button></div></div>`;
   if (cur.cut) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
   $('#again1')?.addEventListener('click', retry);
+  showMyVoice();
   $('#fb [data-fiche]')?.addEventListener('click', e => openFiche(e.target.dataset.fiche));
   $('#nx').addEventListener('click', next);
   $('#nx').focus();
@@ -355,6 +395,9 @@ function end() {
     title = 'DÉFI DU JOUR';
     body = `<p class="ctx">🏆 Défi du ${today()} : ${ok} / ${total}. Revenez demain pour un nouveau défi.</p>
       <p class="muted" style="margin:0 20px">Vos derniers défis : ${esc(last)}</p>`;
+  } else if (session?.type === 'cible') {
+    title = 'ENTRAÎNEMENT CIBLÉ';
+    body = `<p class="ctx">🎯 ${esc(CONSEILS[session.kind]?.[0] || '')} : ${ok} / ${total} (${pct} %).</p>`;
   }
   $('#card').innerHTML = `<div class="radio"><span class="led"></span><span>COM1</span><strong>${title}</strong></div>${body}
     <div class="row" style="margin:12px 20px 0"><button class="primary" id="again">${session ? 'Retour à l’entraînement' : 'Recommencer'}</button></div>`;
@@ -388,6 +431,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#go')?.click(); }
     return;
   }
+  // raccourcis 1-4 : pas pendant une saisie ni quand une fenêtre (fiches, glossaire, stats) est ouverte
+  if (/INPUT|SELECT/.test(e.target.tagName) || $('dialog[open]')) return;
   if (!answered && /^[1-4]$/.test(e.key)) $$('.opts button')[e.key - 1]?.click();
 });
 

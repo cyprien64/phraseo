@@ -91,3 +91,7 @@ QUESTIONS.forEach(q => { const w = L.whyRules(q); assert(w.regles.length > 0); }
 assert(L.whyRules(QUESTIONS.find(q => q.ctx === 'Aligné piste 24.')).regles.some(r => /SERA.8015/.test(r.src)));
 assert.strictEqual(L.badges(QUESTIONS, {}, {}).length, 10);
 console.log('apprentissage OK');
+assert.strictEqual(L.bilan({ qnh: 3 }, 60).top[0].key, 'qnh');
+assert(L.cible(QUESTIONS, 'qnh').length >= 4 && L.cible(QUESTIONS, 'qnh').every(q => /QNH/.test(q.atc + q.answers[0])));
+assert(L.cible(QUESTIONS, 'indicatif').length > 50);
+console.log('ciblé OK');
