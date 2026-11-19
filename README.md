@@ -44,10 +44,15 @@ Réalisme :
 - **Accents** : en anglais, à partir du niveau Confirmé, les voix anglaises de différentes régions installées
   sur l'appareil sont utilisées selon le poste.
 
-Niveaux : **Débutant** (voix lente, messages simples), **Confirmé** (débit normal, souffle radio, messages combinés),
-**Expert** (débit de contrôleur, parasites, écoute seule imposée), **Expert+** (débit très rapide, parasites forts,
-messages longs ou combinés seulement, fréquence encombrée avec indicatifs proches et coupures radio toujours actives). La voix utilise les voix installées sur l'appareil :
-pour une voix plus naturelle, installer une voix « Premium/Améliorée » (macOS : Réglages → Accessibilité → Contenu énoncé).
+Voix : **🎙️ Voix réaliste (radio)** (activée par défaut) — voix de synthèse neuronale (modèles Piper : Tom et Siwis en
+français ; Alan, Cori et « Northern English Male » en anglais) calculée dans le navigateur (`tts-worker.js`, sans figer la
+page), puis passée dans un filtre radio VHF (bande 300–3000 Hz, saturation, compression, souffle et squelch).
+Chaque voix est téléchargée une fois (environ 60 Mo) puis gardée par le navigateur ; ensuite, un message est prêt en
+1 à 4 secondes. Sans cette option ou hors ligne : voix installées sur l'appareil.
+Niveaux : le débit reste celui d'un contrôleur réel (un peu plus posé en Débutant) ; la difficulté vient du souffle et
+de la saturation radio, des messages et des pièges. **Débutant** (messages simples), **Confirmé** (messages combinés),
+**Expert** (parasites, écoute seule imposée), **Expert+** (parasites forts, messages longs ou combinés seulement,
+fréquence encombrée avec indicatifs proches et coupures radio toujours actives).
 Les indicatifs sont écrits en lettres (F-GBCD) et prononcés avec l'alphabet d'épellation (Foxtrot Golf Bravo Charlie Delta).
 En anglais, les nombres sont énoncés selon le manuel DSNA p. 13-16 (« niner », « level one hundred », « decimal one ») ;
 en français, comme dans la vie courante avec « décimale » pour les fréquences (p. 17).

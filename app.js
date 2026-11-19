@@ -176,7 +176,7 @@ function stats() {
 }
 
 function next() {
-  speechSynthesis.cancel(); stopHiss(); stopRecording();
+  hush(); stopRecording();
   if (myAudio) { URL.revokeObjectURL(myAudio); myAudio = null; }
   if (!pool.length) { $('#card').innerHTML = '<p class="ctx">Aucune question pour ces réglages.</p>'; return; }
   if (idx >= pool.length) return end();
@@ -196,7 +196,7 @@ function next() {
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
-    <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button>
+    <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button><span id="vstat" class="muted" role="status"></span>
     ${$('#busy').checked && !cur.pilote ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
   if (cur.pilote) h += `<div class="bubble pilot"><div class="who">${en ? 'Pilot' : 'Pilote'}</div><p class="msg">${esc(cur.pilote)}</p></div>`;
   h += `<p class="q">${esc(q)}</p>`;
@@ -219,7 +219,7 @@ function next() {
   $$('.opts button').forEach(b => b.addEventListener('click', () => pick(b)));
   $('#go')?.addEventListener('click', () => grade($('#txt').value));
   $('#mic')?.addEventListener('click', listenMic);
-  if (listen) say();
+  if (listen) say(); else prefetchVoice();
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
   tick();
 }
@@ -233,9 +233,10 @@ function tick() {
 }
 
 // ── Voix du contrôleur ──
-// Niveaux : débit de parole, souffle radio (volume du bruit), écoute seule imposée.
-const LEVELS = { 1: { rate: 0.9, hiss: 0 }, 2: { rate: 1.15, hiss: 0.012 }, 3: { rate: 1.35, hiss: 0.03, listen: true },
-  4: { rate: 1.5, hiss: 0.045, listen: true } };
+// Niveaux : débit de la voix du système, souffle radio, distorsion de la radio, écoute seule imposée.
+// Débit proche d'un vrai contrôleur à tous les niveaux : la difficulté vient du bruit et des messages, pas de la vitesse.
+const LEVELS = { 1: { rate: 0.85, hiss: 0.004, drive: 1.2 }, 2: { rate: 0.95, hiss: 0.012, drive: 1.8 },
+  3: { rate: 1, hiss: 0.022, drive: 2.5, listen: true }, 4: { rate: 1.05, hiss: 0.032, drive: 3.2, listen: true } };
 const NOVELTY = /bells|bubbles|boing|cellos|whisper|zarvox|trinoids|organ|jester|superstar|bad news|good news|wobble|bahh|albert|hysterical|deranged|pipe/i;
 const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
@@ -274,23 +275,92 @@ function noise(vol, secs) {
 }
 function stopHiss() { try { hissNode?.stop(); } catch {} hissNode = null; }
 
+// ── Voix réaliste : synthèse neuronale Piper (bibliothèque vits-web, calcul dans le navigateur) passée dans un
+// filtre radio VHF. Chaque voix est téléchargée une fois (≈ 60 Mo) puis gardée par le navigateur.
+// En cas d'échec (hors ligne, navigateur trop ancien) : voix du système.
+const NEURAL = { fr: ['fr_FR-tom-medium', 'fr_FR-siwis-medium'],
+  en: ['en_GB-alan-medium', 'en_GB-cori-medium', 'en_GB-northern_english_male-medium'] };
+const neuralVoice = (lang, st) => { const vs = NEURAL[lang] || NEURAL.fr; return val('niv') === '1' ? vs[0] : vs[hash(st || '') % vs.length]; };
+// Débit : celui, naturel, du modèle ; un peu plus posé en Débutant (durée × 1,12).
+const SLOW = { 1: 1.12, 2: 1, 3: 1, 4: 1 };
+let ttsWorker = null, ttsSeq = 0, saySrc = null, sayTok = 0;
+const audioCache = new Map(), ttsWait = new Map();
+let ttsProgress = () => {};
+function neuralAudio(text, voiceId) {
+  const slow = SLOW[val('niv')], k = `${voiceId}|${slow}|${text}`;
+  if (!audioCache.has(k)) audioCache.set(k, new Promise((resolve, reject) => {
+    if (!ttsWorker) {
+      ttsWorker = new Worker('tts-worker.js', { type: 'module' });
+      ttsWorker.onmessage = ({ data: d }) => {
+        if (d.progress != null) return ttsProgress(d.progress);
+        const w = ttsWait.get(d.id); ttsWait.delete(d.id);
+        if (!w) return;
+        if (d.error) return w.reject(new Error(d.error));
+        const b = audio().createBuffer(1, d.pcm.length, d.rate); b.copyToChannel(d.pcm, 0); w.resolve(b);
+      };
+      ttsWorker.onerror = e => { for (const w of ttsWait.values()) w.reject(e); ttsWait.clear(); ttsWorker = null; };
+    }
+    const id = ++ttsSeq;
+    ttsWait.set(id, { resolve, reject });
+    ttsWorker.postMessage({ id, text, voiceId, slow });
+  }).catch(e => { audioCache.delete(k); throw e; }));
+  return audioCache.get(k);
+}
+// Préparation à l'avance (dans le worker, sans figer la page) dès que la carte s'affiche.
+function prefetchVoice() {
+  if (!ttsWorker || !$('#neural').checked || !cur?.atc) return; // seulement si la voix est déjà utilisée (pas de téléchargement imposé)
+  neuralAudio(speakable(cur.cut ? cur.cut.heard : cur.atc, cur.lang), neuralVoice(cur.lang, cur.st)).catch(() => {});
+}
+// Chaîne radio : bande passante 300–3000 Hz, présence vers 1,8 kHz, saturation douce, compression.
+const clipCurve = k => Float32Array.from({ length: 1024 }, (_, i) => Math.tanh(k * (i / 512 - 1)) / Math.tanh(k));
+function playRadio(buf, L, onend) {
+  const c = audio(), src = c.createBufferSource();
+  const hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), pk = c.createBiquadFilter(), sh = c.createWaveShaper(), comp = c.createDynamicsCompressor();
+  hp.type = 'highpass'; hp.frequency.value = 300; lp.type = 'lowpass'; lp.frequency.value = 3000;
+  pk.type = 'peaking'; pk.frequency.value = 1800; pk.gain.value = 5; sh.curve = clipCurve(L.drive);
+  if (!buf.peak) { buf.peak = 0.01; for (const x of buf.getChannelData(0)) buf.peak = Math.max(buf.peak, Math.abs(x)); }
+  const g = c.createGain(); g.gain.value = 0.8 / buf.peak; // volume normalisé avant la saturation
+  src.buffer = buf; src.onended = onend;
+  src.connect(g).connect(hp).connect(lp).connect(pk).connect(sh).connect(comp).connect(c.destination);
+  src.start();
+  return src;
+}
+function hush() { sayTok++; speechSynthesis.cancel(); try { saySrc?.stop(); } catch {} saySrc = null; stopHiss(); }
+const vstat = t => { if ($('#vstat')) $('#vstat').textContent = t; };
+
 // `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée).
 function say(text = cur.cut ? cur.cut.heard : cur.atc) {
-  speechSynthesis.cancel(); stopHiss();
-  const L = LEVELS[val('niv')], v = pickVoice(cur.lang, cur.st), cut = cur.cut && text === cur.cut.heard;
+  hush();
+  const tok = sayTok, L = LEVELS[val('niv')], cut = cur.cut && text === cur.cut.heard, card = cur;
+  const tx = () => { $('#led')?.classList.add('tx'); noise(L.hiss * 6, 0.08); hissNode = noise(L.hiss); }; // alternat + souffle porteuse
+  const rx = () => {
+    if (tok !== sayTok) return;
+    $('#led')?.classList.remove('tx'); stopHiss(); noise(L.hiss * 6, 0.12); // squelch de fin d'émission
+    if (cut) noise(0.15, 1.2); // la fin du message est couverte par le bruit
+  };
+  if (!$('#neural').checked) return sysSay(text, L, tx, rx);
+  vstat('Préparation de la voix…');
+  ttsProgress = p => tok === sayTok && vstat(`Téléchargement de la voix (une seule fois) : ${Math.round(100 * p)} %`);
+  neuralAudio(speakable(text, card.lang), neuralVoice(card.lang, card.st))
+    .then(buf => {
+      if (tok !== sayTok || card !== cur) return;
+      vstat(''); tx();
+      setTimeout(() => { if (tok === sayTok) saySrc = playRadio(buf, L, rx); }, 150);
+    })
+    .catch(() => { if (tok === sayTok) { vstat('Voix réaliste indisponible : voix du système.'); sysSay(text, L, tx, rx); } });
+}
+
+// Voix du système (voix installées sur l'appareil), sans filtre radio possible.
+function sysSay(text, L, tx, rx) {
+  const v = pickVoice(cur.lang, cur.st);
   const u = new SpeechSynthesisUtterance(speakable(text, cur.lang));
   u.lang = v?.lang || (cur.lang === 'en' ? 'en-GB' : 'fr-FR');
   if (v) u.voice = v;
   u.rate = L.rate;
   u.pitch = 0.9 + (hash(cur.st || '') % 3) * 0.08;
-  u.onstart = () => $('#led')?.classList.add('tx');
-  u.onend = u.onerror = () => {
-    $('#led')?.classList.remove('tx');
-    if (L.hiss) { stopHiss(); noise(L.hiss * 6, 0.12); } // squelch de fin d'émission
-    if (cut) noise(0.15, 1.2); // la fin du message est couverte par le bruit
-  };
-  if (L.hiss) { noise(L.hiss * 6, 0.08); hissNode = noise(L.hiss); } // alternat + souffle porteuse
-  setTimeout(() => speechSynthesis.speak(u), L.hiss ? 150 : 0);
+  u.onend = u.onerror = rx;
+  tx();
+  setTimeout(() => speechSynthesis.speak(u), 150);
 }
 speechSynthesis.onvoiceschanged = () => {}; // force le chargement de la liste des voix (Chrome)
 
@@ -340,7 +410,7 @@ function showMyVoice() {
   const row = $('#fb .row');
   if (!row || !myAudio || $('#myVoice')) return;
   row.insertAdjacentHTML('afterbegin', '<button id="myVoice">▶️ Ma réponse</button><button id="atcVoice">🔊 Le contrôleur</button>');
-  $('#myVoice').addEventListener('click', () => { speechSynthesis.cancel(); new Audio(myAudio).play(); });
+  $('#myVoice').addEventListener('click', () => { hush(); new Audio(myAudio).play(); });
   $('#atcVoice').addEventListener('click', () => say(cur.cut ? cur.full.atc : cur.atc));
 }
 
@@ -416,7 +486,7 @@ function retry() {
 }
 
 function end() {
-  clearInterval(timer); speechSynthesis.cancel(); stopHiss();
+  clearInterval(timer); hush();
   stats();
   const n = session?.type === 'exam' ? pool.length : total; // examen : les questions sans réponse comptent fausses
   const pct = n ? Math.round(100 * ok / n) : 0;
