@@ -68,7 +68,7 @@ function showStats() {
 // session : null (entraînement libre), { type: 'exam' } (examen blanc) ou { type: 'defi' } (défi du jour)
 let session = null, timer = null;
 const EXAM_N = 30, EXAM_MIN = 15, EXAM_OK = 80; // 30 s par question, réussite à 80 %
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Date().toLocaleDateString('sv'); // AAAA-MM-JJ à l'heure de l'appareil
 // examen et défi en QCM ; l'entraînement ciblé et les leçons gardent le mode choisi
 // (leçon : la dictée devient l'écrit et le pilote fautif le QCM, pour que les réponses comptent dans la progression)
 const modeNow = () => {
@@ -79,10 +79,12 @@ const modeNow = () => {
 const navOrder = (a, b) => b.lang.localeCompare(a.lang) || a.nav - b.nav; // français puis anglais, dans l'ordre du vol
 const words = s => s.split(' ').length;
 
+// exercices de la langue choisie (l'alphabet est dans toutes les langues)
+const langOk = q => val('lang') === 'all' || q.regle === 'alpha' || q.lang === val('lang');
+
 function start(sess = null) {
   session = sess; clearInterval(timer);
-  const l = val('lang'), r = val('regle'), m = modeNow(), chrono = !session && $('#chrono').checked, su = $('#sujet').value;
-  const langOk = q => l === 'all' || q.regle === 'alpha' || q.lang === l;
+  const r = val('regle'), m = modeNow(), chrono = !session && $('#chrono').checked, su = $('#sujet').value;
   if (session?.type === 'defi') pool = dailyPick(QUESTIONS, today(), 10); // identique pour tout le monde
   else if (session?.type === 'cible') // entraînement ciblé sur un type d'erreur du bilan
     pool = cible(QUESTIONS, session.kind).filter(q => langOk(q) && (m === 'qcm' || !q.qcmOnly) && (q.niv || 1) <= +val('niv'))
@@ -193,20 +195,13 @@ function chatterFor(q, c) {
 function liveAtis(lang) {
   const a = atisFromMetar(wx.raw, terrain, memo.rw24, lang);
   if (!a) return [];
-  const en = lang === 'en', other = terrain.pistes.find(x => x !== a.piste), rev = x => [...x].reverse().join('');
-  const pick = (good, arr) => [...new Set(arr.filter(x => x && x !== good))].sort(() => Math.random() - 0.5).slice(0, 3);
-  const letters = Object.values(ICAO), li = letters.indexOf(a.letter);
+  const en = lang === 'en', ch = atisChoices(a, terrain.pistes);
   const qs = [
-    [en ? 'What is the information letter?' : 'Quelle est la lettre de l’information ?', a.letter,
-      pick(a.letter, [letters[(li + 1) % 26], letters[(li + 25) % 26], letters[(li + 2) % 26], letters[(li + 13) % 26]])],
-    [en ? 'Which runway is in use?' : 'Quelle est la piste en service ?', a.piste, pick(a.piste, [other, rev(a.piste), rev(other)])],
-    [en ? 'What is the QNH?' : 'Quel est le QNH ?', a.qnh, pick(a.qnh, [a.qnh.slice(0, -2) + rev(a.qnh.slice(-2)), String(+a.qnh + 10), String(+a.qnh - 1), '1013'])],
+    [en ? 'What is the information letter?' : 'Quelle est la lettre de l’information ?', a.letter, ch.letter],
+    [en ? 'Which runway is in use?' : 'Quelle est la piste en service ?', a.piste, ch.piste],
+    [en ? 'What is the QNH?' : 'Quel est le QNH ?', a.qnh, ch.qnh],
   ];
-  if (a.wind) {
-    const [d, , s] = a.wind.split(' '), w = (dd, ss) => a.wind.replace(d, dd).replace(` ${s} `, ` ${ss} `);
-    qs.push([en ? 'What is the wind?' : 'Quel est le vent ?', a.wind,
-      pick(a.wind, [w(String((+d + 40) % 360 || 360).padStart(3, '0'), s), w(d, String(+s + 10)), w(rev(d), s)])]);
-  }
+  if (a.wind) qs.push([en ? 'What is the wind?' : 'Quel est le vent ?', a.wind, ch.wind]);
   return qs.sort(() => Math.random() - 0.5).slice(0, 2).map(([q, ans, wrong]) => ({
     live: true, prepared: true, cat: 'atis', lang, regle: 'vfr', who: 'ATIS', shown: series,
     st: `${terrain.radio} ATIS ${en ? terrain.atis.replace(',', '.') : terrain.atis}`,
@@ -247,7 +242,7 @@ function next() {
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
     <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
     <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button><span id="vstat" class="muted" role="status"></span>
-    ${$('#busy').checked && !cur.pilote ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
+    ${($('#busy').checked || val('niv') === '4') && !cur.pilote ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
   if (cur.pilote) h += `<div class="bubble pilot"><div class="who">${en ? 'Pilot' : 'Pilote'}</div><p class="msg">${esc(cur.pilote)}</p></div>`;
   h += `<p class="q">${esc(q)}</p>`;
   if (mode === 'qcm') {
@@ -344,6 +339,7 @@ const audioCache = new Map(), ttsWait = new Map();
 let ttsProgress = () => {};
 function neuralAudio(text, voiceId) {
   const slow = SLOW[val('niv')], k = `${voiceId}|${slow}|${text}`;
+  if (audioCache.size > 40) audioCache.delete(audioCache.keys().next().value); // ≈ 440 Ko par message de 5 s : on garde les 40 derniers
   if (!audioCache.has(k)) audioCache.set(k, new Promise((resolve, reject) => {
     if (!ttsWorker) {
       ttsWorker = new Worker('tts-worker.js', { type: 'module' });
@@ -622,7 +618,7 @@ function end() {
     body = `<p class="ctx">🏆 Défi du ${today()} : ${ok} / ${total}. Revenez demain pour un nouveau défi.</p>
       <p class="muted" style="margin:0 20px">Vos derniers défis : ${esc(last)}</p>`;
   } else if (session?.type === 'lecon') {
-    const ls = parcours(QUESTIONS.filter(q => val('lang') === 'all' || q.regle === 'alpha' || q.lang === val('lang')), prog);
+    const ls = parcours(QUESTIONS.filter(langOk), prog);
     const L = ls[session.n], nx = ls[session.n + 1];
     title = 'PARCOURS';
     body = `<p class="ctx">🧭 ${esc(L.titre)} : ${ok} / ${total} dans cette série. Leçon réussie à ${Math.round(100 * L.pct)} %
@@ -648,7 +644,7 @@ function openFiche(id = FICHES[0].id) {
 }
 
 function showParcours() {
-  const l = val('lang'), ls = parcours(QUESTIONS.filter(q => l === 'all' || q.regle === 'alpha' || q.lang === l), prog);
+  const ls = parcours(QUESTIONS.filter(langOk), prog);
   $('#parcoursBody').innerHTML = ls.map((x, i) => `<li class="${x.open ? '' : 'lock'}">
     <span>${x.pct >= SEUIL ? '✅' : x.open ? '▶️' : '🔒'} ${esc(x.titre)}</span>
     <div class="meter" aria-hidden="true"><div style="width:${Math.round(100 * x.pct)}%;background:var(--ok)"></div></div>
@@ -708,6 +704,7 @@ $('#reset').addEventListener('click', () => {
   if (!confirm('Effacer toute votre progression enregistrée sur cet appareil ?')) return;
   prog = {}; extra = {}; save(); errCount(); $('#stats').close(); start();
 });
-QUESTIONS.forEach(q => { q.id = hash([q.lang, q.regle, q.atc, q.q, q.ctx].join('|')).toString(36); });
+// q.nav : les étapes de la navigation reprennent des exercices de base mot pour mot, elles ont leur propre progression
+QUESTIONS.forEach(q => { q.id = hash([q.lang, q.regle, q.atc, q.q, q.ctx, ...(q.nav ? [q.nav] : [])].join('|')).toString(36); });
 errCount();
 start();

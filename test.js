@@ -146,3 +146,19 @@ console.log(ntr, 'QCM piégeux OK');
   assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z VRB03KT 9999 FEW030 12/05 Q1010', t, '31', 'fr'), null, 'vent variable : pas de formulation');
   assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z 24010KT 0400 R13/0550N FG VV002 05/05 Q1020', t, '31', 'fr'), null, 'RVR : pas d’ATIS');
   console.log('ATIS réel OK'); }
+
+// ── Choix de l'ATIS réel : trois mauvaises réponses distinctes, plausibles et refusées, sur chaque terrain ──
+for (const t of TERRAINS) for (const piste of t.pistes) for (const raw of [
+  'METAR X 191000Z 06010KT 9999 FEW030 12/05 Q1013 NOSIG', 'METAR X 191000Z 31025G35KT CAVOK 02/M01 Q0998', 'METAR X 191000Z 00000KT 9999 FEW030 12/05 Q1011']) {
+  const a = R.atisFromMetar(raw, t, piste, 'fr'), ch = R.atisChoices(a, t.pistes);
+  for (const [k, ans] of [['letter', a.letter], ['piste', a.piste], ['qnh', a.qnh], ['wind', a.wind]]) {
+    if (!ans) { assert(!ch[k]); continue; }
+    assert.strictEqual(new Set(ch[k]).size, 3, `${t.icao} ${k} : ${ch[k]}`);
+    ch[k].forEach(w => assert(!check(w, [ans]).pass, `${t.icao} ${k} : ${w} accepté pour ${ans}`));
+  }
+  ch.piste.forEach(p => assert(+p >= 1 && +p <= 36, 'piste plausible ' + p));
+}
+console.log('choix ATIS OK');
+{ const h = s => [...s].reduce((x, c) => (x * 31 + c.charCodeAt(0)) >>> 0, 7); // même calcul que app.js
+  const ids = QUESTIONS.map(q => h([q.lang, q.regle, q.atc, q.q, q.ctx, ...(q.nav ? [q.nav] : [])].join('|')).toString(36));
+  assert.strictEqual(new Set(ids).size, ids.length, 'identifiants en double'); console.log('identifiants uniques OK'); }

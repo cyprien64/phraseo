@@ -186,13 +186,12 @@ function parseMetar(raw) {
   }
   return m.time && m.wind && m.temp && m.qnh && (m.cavok || m.vis) ? m : null;
 }
+const ATIS_LETTERS = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India', 'Juliett', 'Kilo', 'Lima', 'Mike',
+  'November', 'Oscar', 'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform', 'Victor', 'Whiskey', 'X-ray', 'Yankee', 'Zulu'];
 function atisFromMetar(raw, t, piste, lang) {
   const m = parseMetar(raw);
   if (!m) return null;
-  const en = lang === 'en', k = en ? 1 : 0, L = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[(m.day * 24 + +m.time.slice(0, 2)) % 26];
-  const letter = { A: 'Alfa', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliett',
-    K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango', U: 'Uniform',
-    V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee', Z: 'Zulu' }[L];
+  const en = lang === 'en', k = en ? 1 : 0, letter = ATIS_LETTERS[(m.day * 24 + +m.time.slice(0, 2)) % 26];
   const deg = (t, dew) => (t[0] === 'M' ? (en ? 'minus ' : 'moins ') : '') + (en && dew ? t.replace('M', '') : String(+t.replace('M', '')));
   const w = m.wind;
   const wind = w.calm ? (en ? 'Wind calm' : 'Vent calme')
@@ -216,4 +215,24 @@ function atisFromMetar(raw, t, piste, lang) {
   return { text: parts.join('. ') + '.', letter, piste, qnh: m.qnh, wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
 }
 
-if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar };
+// Mauvaises réponses des questions sur l'ATIS réel : trois choix plausibles et distincts pour chaque question
+// (une piste réelle peut être l'inversion de l'autre, 13/31 ; une direction de vent comme 060 se lit pareil à l'envers).
+function atisChoices(a, pistes) {
+  const rev = x => [...x].reverse().join(''), pad = (n, l) => String(n).padStart(l, '0');
+  const three = (good, arr) => [...new Set(arr.filter(x => x && x !== good))].slice(0, 3).sort(() => Math.random() - 0.5);
+  const rwy = n => (n >= 1 && n <= 36 ? pad(n, 2) : null), p = +a.piste, other = pistes.find(x => x !== a.piste);
+  const li = ATIS_LETTERS.indexOf(a.letter), q = +a.qnh;
+  const out = {
+    letter: three(a.letter, [1, 25, 2, 13].map(i => ATIS_LETTERS[(li + i) % 26])),
+    piste: three(a.piste, [other, rwy(+rev(a.piste)), rwy(p + 1), rwy(p - 1), rwy(+other + 1)]),
+    qnh: three(a.qnh, [a.qnh.slice(0, -2) + rev(a.qnh.slice(-2)), String(q + 10), String(q - 1), String(q + 1), '1013']),
+  };
+  if (a.wind) {
+    const [d, , s] = a.wind.split(' '), w = (dd, ss) => a.wind.replace(`${d} `, `${dd} `).replace(` ${s} `, ` ${ss} `);
+    const dir = n => pad(((n % 360) + 360) % 360 || 360, 3);
+    out.wind = three(a.wind, [w(dir(+d + 40), s), w(dir(+d - 40), s), w(d, String(+s + 10)), w(d, String(+s + 5))]);
+  }
+  return out;
+}
+
+if (typeof module !== 'undefined') module.exports = { newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };

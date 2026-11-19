@@ -5,7 +5,8 @@
 import { createPiperPhonemize } from 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js';
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/+esm';
 
-const HF = 'https://huggingface.co/diffusionstudio/piper-voices/resolve/main';
+// version figée du dépôt de voix (commit du 5 juillet 2024) : les fichiers ne peuvent plus changer sous nos pieds
+const HF = 'https://huggingface.co/diffusionstudio/piper-voices/resolve/840e38a7e26d813bd6221b78cfbaefa3585b3f71';
 const PHON = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize';
 ort.env.wasm.wasmPaths = 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/';
 ort.env.wasm.numThreads = 1; // pas d'isolation cross-origin sur GitHub Pages
@@ -17,8 +18,10 @@ const PATHS = {
   'en_GB-northern_english_male-medium': 'en/en_GB/northern_english_male/medium/en_GB-northern_english_male-medium.onnx',
 };
 
+caches.delete('phraseo-voix-v1').catch(() => {}); // voix d'avant la version figée : place libérée
+
 async function get(url, progress) {
-  const cache = await caches.open('phraseo-voix-v1');
+  const cache = await caches.open('phraseo-voix-v2');
   const hit = await cache.match(url);
   if (hit) return hit.blob();
   const r = await fetch(url);
