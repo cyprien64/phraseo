@@ -65,6 +65,12 @@ Réalisme :
   sans SID publiée (Tarbes, Bron, Agen) : exercice écarté.
 - **⏸️ Clairance conditionnelle réelle** : si OpenSky voit un avion en courte finale de la piste en service, « derrière le
   trafic en courte finale, alignez-vous et attendez… derrière » (Manuel p. 57-58 ; type d'avion inconnu).
+- **🔀 Transit réel** (Bordeaux) : demande et clairance de transit par les itinéraires VFR à double sens de la VAC
+  (N, NA/EA, SA/OA, S à 1500 ft selon la piste), sur le modèle du manuel p. 178-179. Pau n'en publie pas.
+- **🎙️ Ma voix à la radio** : la réécoute de votre enregistrement passe par le même filtre radio que le contrôleur.
+- **⏱ Temps de réaction** (Expert, Expert+, hors QCM et examen) : plus de 10 s entre la fin du message et le début de
+  la réponse = « trop tardif » (règle d'entraînement du site, pas une règle officielle).
+- **🗺️ Carte des navigations réelles** : terrains, points VAC, route et position simulée de l'avion à chaque message.
 - **🛬 Toulouse-Blagnac et Montpellier** : piste du tour de piste de la VAC (14L/32R ; 12L/30R), dite « piste 32 droite »
   / « runway 32 right » (Manuel p. 15).
 - **📏 Niveau de transition** : ajouté à l'ATIS reconstitué et aux messages, calculé avec le QNH réel (plus bas niveau

@@ -151,6 +151,8 @@ function start(sess = null) {
   if (live.length && ['all', 'trafic', 'base'].includes(su)) pool.splice(live.length, 0, ...liveSvfr(L1));
   // panne radio : conduite à tenir publiée sur la carte VAC du terrain
   if (live.length && ['all', 'urgence'].includes(su)) pool.splice(Math.min(pool.length, live.length + 5), 0, ...livePanne(L1));
+  // transit réel de la zone par les itinéraires VFR publiés de la VAC
+  if (live.length && ['all', 'transit'].includes(su)) pool.splice(live.length, 0, ...liveTransit(L1));
   // clairance conditionnelle derrière un avion réellement en courte finale (OpenSky)
   if (live.length && ['all', 'sol'].includes(su)) pool.splice(live.length, 0, ...liveCond(L1));
   // nuit aéronautique au terrain : deux questions de vol de nuit en tête de série
@@ -337,6 +339,40 @@ function livePanne(lang) {
     src: `Carte VAC ${t.icao}, consignes particulières de radiocommunication (SIA, AIRAC 29/10/2026) ; code 7600 : ${SERA('SERA.13005 a) 2)')}` }];
 }
 
+// Transit de la CTR par les itinéraires VFR publiés sur la VAC (Bordeaux : « itinéraires à double sens, utilisables pour
+// les départs, les arrivées et les transits », altitude de survol 1500 ft), sur le modèle du manuel p. 178-179.
+// Pau ne publie pas d'itinéraire de transit : pas d'exercice.
+const TRANSIT = { LFBD: { alt: 1500, n: 'N', s: 'S', via: { 23: ['NA', 'SA'], '05': ['NA', 'SA'], 29: ['EA', 'SA'], 11: ['EA', 'OA'] },
+  vac: 'carte VAC LFBD, TXT 01-02 (itinéraires VFR à double sens, altitude de survol 1500 ft)' } };
+function liveTransit(lang) {
+  const t = terrain, d = TRANSIT[t.icao], via = d?.via[memo.rwFull];
+  if (!via) return [];
+  const en = lang === 'en', cs = series, mm = String((new Date().getUTCMinutes() + 10) % 60).padStart(2, '0'), [a, b] = via;
+  const st = `${t.radio} ${en ? 'Tower' : 'Tour'} ${en ? t.tour.replace(',', '.') : t.tour}`, twr = `${t.radio} ${en ? 'Tower' : 'Tour'}`;
+  const base = { live: true, prepared: true, cat: 'transit', lang, regle: 'vfr', st, shown: cs, callsigns: [csKey(cs), csKey(abbrev(cs))], metar: wx?.raw };
+  const src = `${MANUEL(178)} ; ${MANUEL(179)} ; ${d.vac}`, alt = d.alt, ft = en ? 'feet' : 'pieds';
+  return [
+    { ...base, qcmOnly: true, atc: '', q: en ? 'What is your request?' : 'Quelle est votre demande ?', src,
+      ctx: en ? `You want to cross the ${t.nom} control zone from north to south (points ${d.n} and ${d.s} of the VAC chart) at ${alt} feet; you estimate ${d.n} at ${mm}.`
+        : `Vous voulez traverser la zone de ${t.nom} du nord au sud (points ${d.n} et ${d.s} de la carte VAC) à ${alt} pieds ; vous estimez ${d.n} à ${mm}.`,
+      answers: [en ? `${twr}, ${cs}, request VFR transit, ${alt} feet from ${d.n} to ${d.s}, estimating ${d.n} at ${mm}` : `${twr}, ${cs}, demande transit VFR, ${alt} pieds, de ${d.n} à ${d.s}, j’estime ${d.n} à ${mm}`],
+      wrong: en ? [`${twr}, ${cs}, crossing the zone`, `${cs}, request transit`, `${twr}, ${cs}, transit at ${alt} feet, roger`]
+        : [`${twr}, ${cs}, je traverse la zone`, `${cs}, demande transit`, `${twr}, ${cs}, transit à ${alt} pieds, roger`] },
+    { ...base, src, ctx: en ? 'You requested the transit.' : 'Vous avez demandé le transit.',
+      atc: en ? `${cs}, transit via ${d.n}, ${a}, ${b}, then ${d.s}, maintain ${alt} feet and report before ${b}.`
+        : `${cs}, transitez via ${d.n}, ${a}, ${b}, puis ${d.s}, maintenez ${alt} pieds, et rappelez avant ${b}.`,
+      answers: [en ? `Roger, transiting via ${d.n}, ${a}, ${b}, then ${d.s}, maintaining ${alt} feet, calling back before ${b}, ${cs}`
+        : `Roger, je transite via ${d.n}, ${a}, ${b}, puis ${d.s}, maintiens ${alt} pieds, et rappelle avant ${b}, ${cs}`],
+      wrong: en ? [`Roger, ${cs}`, `Transiting via ${d.n}, ${a}, ${b}, then ${d.s}, ${cs}`, `Transiting via ${d.n}, ${a}, ${b}, then ${d.s}, maintaining ${alt + 1000} ${ft}, calling back before ${b}, ${cs}`]
+        : [`Roger, ${cs}`, `Je transite via ${d.n}, ${a}, ${b}, puis ${d.s}, ${cs}`, `Je transite via ${d.n}, ${a}, ${b}, puis ${d.s}, maintiens ${alt + 1000} ${ft}, et rappelle avant ${b}, ${cs}`] },
+    { ...base, src, ctx: en ? `Before ${b}; the departing traffic has passed.` : `Avant ${b} ; le départ qui vous gênait est passé.`,
+      atc: en ? `${cs}, continue transit ${d.s}, report ${d.s} to leave.` : `${cs}, poursuivez transit vers ${d.s}, rappelez ${d.s} pour quitter.`,
+      answers: [en ? `Continuing transit ${d.s}, reporting ${d.s} to leave, ${cs}` : `Je poursuis transit vers ${d.s}, et rappelle ${d.s} pour quitter, ${cs}`],
+      wrong: en ? [`Roger, ${cs}`, `Continuing, ${cs}`, `Continuing transit ${d.n}, reporting ${d.n} to leave, ${cs}`]
+        : [`Roger, ${cs}`, `Je poursuis, ${cs}`, `Je poursuis transit vers ${d.n}, et rappelle ${d.n} pour quitter, ${cs}`] },
+  ];
+}
+
 // Clairance conditionnelle derrière un avion réellement en courte finale (OpenSky) : moins de 5 NM, aligné sur l'axe
 // de la piste en service et en rapprochement, sous l'altitude du tour de piste + 1000 ft. Le type d'avion n'est pas connu :
 // « le trafic » (le manuel nomme le type, p. 57-58).
@@ -388,8 +424,8 @@ function liveNav(lang, id) {
   const t1 = Math.max(2, Math.round(nm(A.pos, xPos) * 0.6)), tc = Math.max(4, Math.round(nm(xPos, yPos) * 0.6)), t3 = Math.max(2, Math.round(nm(yPos, B.pos) * 0.6));
   const t0 = Date.now(), at = m => new Date(t0 + m * 60000), hm = m => at(m).toISOString().slice(11, 16).replace(':', '');
   const etaY = hm(4 + t1 + tc), mm = etaY.slice(2);
-  const closed = !atsOpen(B, at(4 + t1 + tc + t3)) ? (en ? ` ⚠️ At your arrival time the ${B.radio} Tower is closed (AIP hours): for real, ${B.aa ? `self-announce on ${fq(B.aa)} (French only)` : 'no control service'}.`
-    : ` ⚠️ À votre heure d’arrivée, la Tour de ${B.radio} est fermée (horaires AIP) : en vrai, ${B.aa ? `auto-information sur ${B.aa} (en français)` : 'pas de contrôle'}.`) : '';
+  const closed = !atsOpen(B, at(4 + t1 + tc + t3)) ? (en ? ` ⚠️ At your arrival time ${twrBn} is closed (AIP hours): for real, ${B.aa ? `self-announce on ${fq(B.aa)} (French only)` : 'no control service'}.`
+    : ` ⚠️ À votre heure d’arrivée, ${twrBn} est fermée (horaires AIP) : en vrai, ${B.aa ? `auto-information sur ${B.aa} (en français)` : 'pas de contrôle'}.`) : '';
   const vacA = `carte VAC ${A.icao}, ${r.vacDep}`, vacB = `carte VAC ${B.icao}, ${r.vacArr}`;
   const S = (st, wait, ctx, atc, ans, wrong, src, q) => ({ st, wait, ctx, atc, ans, wrong, src, q });
   const L = [
@@ -449,14 +485,20 @@ function liveNav(lang, id) {
     return (m.vis && m.vis < 5000) || (m.clouds || []).some(c => /BKN|OVC/.test(c.c || '') && c.h < 1500); });
   if (low) L[0].ctx += en ? ' ⚠️ Today the METAR is below the VFR minima of a control zone (ceiling 1,500 ft, visibility 5 km, SERA.5005 b)): for real, this flight would need a special VFR clearance or would not take place.'
     : ' ⚠️ Aujourd’hui, le METAR est sous les minima VFR d’une zone de contrôle (plafond 1500 ft, visibilité 5 km, SERA.5005 b)) : en vrai, il faudrait un VFR spécial, ou le vol n’aurait pas lieu.';
+  // position simulée : roulage et attente (4 min) puis A → point de sortie → point d'entrée → B
+  const legs = [[A.pos, xPos, t1], [xPos, yPos, tc], [yPos, B.pos, t3]];
+  const where = min => { let m = min - 4; if (m <= 0) return A.pos;
+    for (const [p, q, d] of legs) { if (m <= d) return [p[0] + (q[0] - p[0]) * m / d, p[1] + (q[1] - p[1]) * m / d]; m -= d; } return B.pos; };
+  const pts = [[...A.pos, A.icao, 1], [...xPos, X], [...yPos, Y], [...B.pos, B.icao, 1]];
   let clock = 0;
   return L.map((c, i) => {
     clock += c.wait;
+    c.map = { pts, plane: where(clock) };
     const atB = c.st.startsWith(B.radio) || c.st === arrStn;
     return { live: true, prepared: true, cat: 'nav', nav: i + 1, lang, regle: 'vfr', st: c.st, atc: c.atc, answers: [c.ans], wrong: c.wrong,
       ctx: `${c.wait >= 2 ? `⏱ ${hm(clock)} UTC (+${c.wait} min${en ? '' : ''}). ` : ''}${c.ctx}`, wait: c.wait,
       src: `${c.src} ; ${atB ? AIP_AD(B.icao) : AIP_AD(A.icao)}`, shown: cs, callsigns: [csKey(cs), csKey(abbrev(cs))],
-      metar: (atB ? wb : wa).raw, ...(c.q ? { q: c.q, qcmOnly: true } : {}) };
+      metar: (atB ? wb : wa).raw, map: c.map, ...(c.q ? { q: c.q, qcmOnly: true } : {}) };
   });
 }
 
@@ -535,7 +577,7 @@ function next() {
       <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}${night ? ` · 🌙 nuit aéronautique (jour à ${nightChange(terrain.pos)} UTC)` : ''}${near ? ` · ✈ ${near} avion${near > 1 ? 's' : ''} en vol à moins de 30 NM (OpenSky)` : ''}</span>
       ${atsOpen(terrain) ? '' : `<span class="closed">🌙 Hors horaires ATS publiés (${esc(terrain.atsTxt)}) : ${terrain.aa ? `auto-information sur ${esc(terrain.aa)} (A/A, en français).` : 'en réalité, pas de contrôle à cette heure-ci.'}</span>`}</p>`
     : cur.metar ? `<p class="metar">📡 ${esc(cur.metar)}</p>` : ''}
-    <p class="ctx">${esc(cur.ctx)}</p>`;
+    ${cur.map ? navMap(cur.map, en) : ''}<p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.chatter) h += `<div class="fil" aria-label="${en ? 'Other traffic on frequency' : 'Autres avions sur la fréquence'}">${cur.chatter.map(l =>
     `<div class="bubble ${l.pilot ? 'pilot' : 'atc'} other"><div class="who">${esc(l.who)}</div><p class="msg ${listen ? 'hidden' : ''}" ${listen ? 'aria-hidden="true"' : ''}>${esc(l.text)}</p></div>`).join('')}</div>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
@@ -563,10 +605,25 @@ function next() {
   $('#nm')?.addEventListener('click', () => { if (!answered) feedback(!!cur.notMine, { nm: true }); });
   $$('.opts button').forEach(b => b.addEventListener('click', () => pick(b)));
   $('#go')?.addEventListener('click', () => grade($('#txt').value));
+  $('#txt')?.addEventListener('input', () => { cur.startAt ??= Date.now(); }, { once: true });
   $('#mic')?.addEventListener('click', listenMic);
   if (listen) say(undefined, 500 + Math.random() * 900 + Math.min(3000, (cur.wait || 0) * 150)); else prefetchVoice(); // navigation : le temps passe // le contrôleur ne parle pas instantanément
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
   tick();
+}
+
+// Petite carte de la navigation réelle (SVG, sans fond de carte) : terrains, points VAC, route et position simulée.
+function navMap({ pts, plane }, en) {
+  const lat0 = pts.reduce((s, p) => s + p[0], 0) / pts.length, k = Math.cos(lat0 * Math.PI / 180);
+  const xy = ([la, lo]) => [lo * k, -la], all = [...pts, plane].map(xy);
+  const [x0, x1] = [Math.min(...all.map(p => p[0])), Math.max(...all.map(p => p[0]))], [y0, y1] = [Math.min(...all.map(p => p[1])), Math.max(...all.map(p => p[1]))];
+  const W = 320, H = 150, pad = 26, sc = Math.min((W - 2 * pad) / (x1 - x0 || 1), (H - 2 * pad) / (y1 - y0 || 1));
+  const P = p => { const [x, y] = xy(p); return [pad + (x - x0) * sc + ((W - 2 * pad) - (x1 - x0) * sc) / 2, pad + (y - y0) * sc + ((H - 2 * pad) - (y1 - y0) * sc) / 2].map(v => v.toFixed(1)); };
+  const route = pts.map(p => P(p).join(',')).join(' '), [px, py] = P(plane);
+  const marks = pts.map(p => { const [x, y] = P(p); return p[3] ? `<circle cx="${x}" cy="${y}" r="5" class="ad"/><text x="${x}" y="${+y - 9}">${esc(p[2])}</text>`
+    : `<path d="M${x} ${+y - 5}L${+x + 5} ${+y + 4}L${+x - 5} ${+y + 4}Z" class="pt"/><text x="${x}" y="${+y + 15}">${esc(p[2])}</text>`; }).join('');
+  return `<svg class="navmap" viewBox="0 0 ${W} ${H}" role="img" aria-label="${en ? 'Route map: simulated aircraft position' : 'Carte de la route : position simulée de l’avion'}">
+    <polyline points="${route}" class="route"/>${marks}<circle cx="${px}" cy="${py}" r="6" class="me"/><text x="${px}" y="${+py - 10}" class="me">✈</text></svg>`;
 }
 
 // Chronomètre de l'examen blanc
@@ -755,7 +812,8 @@ async function play(lines, delay = 0) {
 function say(text, delay = 0) {
   const lines = cardLines(text);
   if (cur.chatter) cur.chatterDone = true;
-  return play(lines, delay).then(done => { if (done && text == null) armRecall(); return done; });
+  const card = cur;
+  return play(lines, delay).then(done => { if (done && text == null) { if (card === cur) cur.heardAt ??= Date.now(); armRecall(); } return done; });
 }
 // Pas de réponse au bout de 10 s (Expert, Expert+) : le contrôleur vous appelle (« F-CD, Pau Tour » : station appelée
 // puis station appelante, SERA.14055 b)).
@@ -817,6 +875,7 @@ let recNow = null; // reconnaissance en cours (alternat : relâcher Espace l'arr
 function listenMic() {
   if (recNow) return;
   const rec = recNow = new SR(), mic = $('#mic');
+  cur.startAt ??= Date.now(); // début de la réponse (temps de réaction)
   noise(0.03, 0.06); // clic d'alternat
   rec.lang = cur.lang === 'en' ? 'en-GB' : 'fr-FR';
   mic.disabled = true; mic.classList.add('on'); mic.textContent = '🔴 À vous…';
@@ -846,12 +905,24 @@ function startRecording() {
     mediaRec.start();
   }).catch(() => {}); // micro refusé : la reconnaissance vocale continue sans enregistrement
 }
+// Réécoute de sa propre voix avec la même chaîne radio que le contrôleur (bande 300-3000 Hz, saturation, souffle,
+// bruit du moteur dans le micro, squelch) : comme on vous entend sur la fréquence.
+function playMine() {
+  hush();
+  const tok = sayTok, L = LEVELS[val('niv')];
+  fetch(myAudio).then(r => r.arrayBuffer()).then(b => audio().decodeAudioData(b)).then(buf => {
+    if (tok !== sayTok) return;
+    const h = L.hiss * 1.5 + 0.006;
+    noise(h * 6, 0.08); hissNode = noise(h); rumbleNode = noise(0.06, 0, 'lowpass', 170);
+    saySrc = playRadio(buf, L, () => { if (tok === sayTok) { stopHiss(); noise(h * 6, 0.12); } });
+  }).catch(() => new Audio(myAudio).play()); // décodage impossible : enregistrement brut
+}
 function stopRecording() { if (mediaRec?.state === 'recording') mediaRec.stop(); }
 function showMyVoice() {
   const row = $('#fb .row');
   if (!row || !myAudio || $('#myVoice')) return;
   row.insertAdjacentHTML('afterbegin', '<button id="myVoice">▶️ Ma réponse</button><button id="atcVoice">🔊 Le contrôleur</button>');
-  $('#myVoice').addEventListener('click', () => { hush(); new Audio(myAudio).play(); });
+  $('#myVoice').addEventListener('click', () => playMine());
   $('#atcVoice').addEventListener('click', () => say(cur.cut || cur.blocked ? cur.full.atc : cur.atc));
 }
 
@@ -867,13 +938,23 @@ function grade(text) {
     return feedback(r.pass, { said: text, notes: r.notes });
   }
   const r = check(text, cur.answers, cur.callsigns);
-  const diff = diffWords(text, r.ans, cur.callsigns);
-  feedback(r.pass, { said: text, diff, notes: diff.notes, ans: r.ans });
+  const diff = diffWords(text, r.ans, cur.callsigns), late = lateBy();
+  feedback(r.pass && !late, { said: text, diff, ans: r.ans, late,
+    notes: [...diff.notes, ...(late ? [`collationnement trop tardif : ${late} s après la fin du message (au-delà de ${REACT_S} s)`] : [])] });
+}
+// Temps de réaction (Expert, Expert+, hors QCM et examen) : délai entre la fin du message du contrôleur et le début de
+// votre réponse (première frappe ou appui sur le micro). Règle d'entraînement du site, pas une règle officielle ; même
+// seuil que le rappel du contrôleur.
+const REACT_S = 10;
+function lateBy() {
+  if (+val('niv') < 3 || session?.type === 'exam' || !cur.atc || cur.q || !cur.heardAt) return 0;
+  const d = ((cur.startAt || Date.now()) - cur.heardAt) / 1000;
+  return d > REACT_S ? Math.round(d) : 0;
 }
 
 const paint = (cs, cls) => cs.map(c => c.bad ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text)).join(' ');
 
-function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm = false, chosen = '' } = {}) {
+function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm = false, chosen = '', late = 0 } = {}) {
   answered = true;
   const counted = !cur.retry;
   if (counted) {
@@ -888,12 +969,12 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   stats(); clearTimeout(recallT);
   // écrit / oral : comme à la radio, le contrôleur répond tout de suite « Négatif je répète » (SERA.14075 d)) ;
   // la correction détaillée vient après le 2e essai
-  if (!good && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && !cur.pilote && cur.atc && !cur.q
+  if (!good && !late && !cur.retry && !cur.notMine && !nm && !cur.cut && !cur.elements && !cur.dictee && !cur.pilote && cur.atc && !cur.q
     && modeNow() !== 'qcm') return retry(modeNow() === 'ecrit' ? said : '');
   $$('#card .msg.hidden').forEach(x => { x.classList.remove('hidden'); x.removeAttribute('aria-hidden'); });
   if ($('#go')) $('#go').disabled = true;
   if ($('#mic')) { $('#mic').disabled = true; $('#mic').classList.remove('on'); $('#mic').textContent = '🎤'; }
-  let head = good ? '✅ Correct' : '❌ À revoir';
+  let head = good ? '✅ Correct' : late ? `⏱ Trop tardif (${late} s)` : '❌ À revoir';
   if (cur.notMine) head = good ? `✅ Bien vu : ce message était pour ${cur.notMine}, on ne répond pas.`
     : `❌ Ce message était pour ${cur.notMine}, pas pour vous (${cur.shown}) : il ne fallait pas répondre.`;
   else if (nm) head = `❌ Ce message était pour vous (${cur.shown}) : il fallait répondre.`;
@@ -921,10 +1002,13 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
 // SERA.14075 d) : « NÉGATIF JE RÉPÈTE » suivi de la version correcte ; nouvel essai non compté.
 // `said` : votre collationnement écrit, « transmis » avec votre voix de pilote avant la réponse du contrôleur.
 function retry(said = '') {
-  cur.retry = true; answered = false;
+  cur.retry = true; answered = false; cur.heardAt = cur.startAt = null; // le chrono repart après « négatif je répète »
   const en = cur.lang === 'en', body = cur.atc.replace(/^[^,]+,\s*/, '');
   const neg = `${cur.shown}, ${en ? 'negative I say again' : 'négatif je répète'}, ${body}`;
-  play([...(said ? [{ text: said, lang: cur.lang, st: cur.st, pilot: true, cs: cur.shown }] : []), { text: neg, lang: cur.lang, st: cur.st }]);
+  const card = cur;
+  play([...(said ? [{ text: said, lang: cur.lang, st: cur.st, pilot: true, cs: cur.shown }] : []), { text: neg, lang: cur.lang, st: cur.st }])
+    .then(done => { if (done && card === cur) cur.heardAt = Date.now(); });
+  $('#txt')?.addEventListener('input', () => { cur.startAt ??= Date.now(); }, { once: true });
   $('#fb').innerHTML = `<p class="muted">📻 ${en ? '« Negative I say again… »' : '« Négatif je répète… »'} : le contrôleur a relevé une erreur et répète
     la clairance. Collationnez à nouveau (essai non compté).</p>`;
   if ($('#txt')) { $('#txt').value = ''; $('#go').disabled = false; $('#txt').focus(); }
