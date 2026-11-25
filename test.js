@@ -17,7 +17,7 @@ assert(check('Approach one one niner decimal two five, F-GBCD', ['Approach 119.2
 
 // Chaque réponse de référence doit passer, chaque mauvaise réponse du QCM doit échouer.
 const fs = require('fs');
-const [QUESTIONS, TERRAINS] = eval(['data.js', 'data-plus.js', 'data-lot2.js', 'data-lot3.js'].map(f => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n') + ';[QUESTIONS, TERRAINS]');
+const [QUESTIONS, TERRAINS, NAV_REAL, PANNE_FAUX] = eval(['data.js', 'data-plus.js', 'data-lot2.js', 'data-lot3.js'].map(f => fs.readFileSync(__dirname + '/' + f, 'utf8')).join('\n') + ';[QUESTIONS, TERRAINS, NAV_REAL, PANNE_FAUX]');
 for (const q of QUESTIONS.filter(q => !q.qcmOnly)) {
   q.answers.forEach(a => assert(check(a, q.answers).pass, 'référence refusée : ' + a));
   q.wrong.forEach(w => assert(!check(w, q.answers).pass, 'mauvaise réponse acceptée : ' + w));
@@ -107,8 +107,9 @@ const pau = TERRAINS.find(t => t.icao === 'LFBP');
 const WX = [null, { wdir: 240, wspd: 10, qnh: 1009 }, { wdir: 300, wspd: 15, gust: 27, qnh: 1015 }, { wdir: 'VRB', wspd: 3, qnh: 1021 }, { wdir: 0, wspd: 0, qnh: 998 }, { wdir: 90, wspd: 25, qnh: 1012 }];
 let nt = 0;
 for (const t of TERRAINS) for (const wx of WX) for (const q of QUESTIONS.filter(q => q.regle !== 'alpha' && !q.qcmOnly && !q.elements)) {
-  const memo = {}; memo.rw24 = memo.rw32 = memo.rw12 = R.bestRunway(t.pistes, wx?.wdir);
-  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx, 'Golf', memo.rw24);
+  const memo = {}, des = R.bestRunway(t.pistes, wx?.wdir); memo.rw24 = memo.rw32 = memo.rw12 = des.slice(0, 2); // comme app.js
+  const v = R.realTerrain(R.vary(q, { cs: 'F-GXYZ', rnd, memo }), t, wx, 'Golf', des, nt);
+  if (/[LR]$/.test(des) && !/afis|atis/.test(q.cat || '') && !q.dest && /\b(piste|runway) \d\d\b/.test(q.atc) && /\b(piste|runway) 24\b/.test(q.atc)) assert(/(piste|runway) \d\d (gauche|droite|left|right)/.test(v.atc), 'piste parallèle : ' + v.atc);
   v.answers.forEach(a => assert(check(a, v.answers, v.callsigns).pass, 'référence (terrain réel) refusée : ' + a));
   v.wrong.forEach(w => assert(!check(w, v.answers, v.callsigns).pass, `mauvaise réponse (terrain réel ${t.icao}) acceptée : ${w} / ${v.answers[0]}`));
   if (wx?.qnh && !q.dest && /QNH/.test(q.atc) && !/afis|atis/.test(q.cat || '')) assert(v.atc.includes('QNH ' + wx.qnh) || v.wrong.some(w => w.includes('QNH ' + wx.qnh)), 'QNH réel : ' + v.atc);
@@ -156,7 +157,7 @@ for (const t of TERRAINS) for (const piste of t.pistes) for (const raw of [
     assert.strictEqual(new Set(ch[k]).size, 3, `${t.icao} ${k} : ${ch[k]}`);
     ch[k].forEach(w => assert(!check(w, [ans]).pass, `${t.icao} ${k} : ${w} accepté pour ${ans}`));
   }
-  ch.piste.forEach(p => assert(+p >= 1 && +p <= 36, 'piste plausible ' + p));
+  ch.piste.forEach(p => assert(parseInt(p) >= 1 && parseInt(p) <= 36, 'piste plausible ' + p));
 }
 console.log('choix ATIS OK');
 { const h = s => [...s].reduce((x, c) => (x * 31 + c.charCodeAt(0)) >>> 0, 7); // même calcul que app.js
@@ -251,3 +252,27 @@ console.log('ATIS station automatique OK');
   for (const t of TERRAINS) for (const r of Object.keys(t.appr || {})) assert(t.pistes.includes(r), `${t.icao} ${r}`);
   assert.strictEqual(speakable("traffic 11 o'clock, 4 miles", 'en'), "traffic eleven o'clock, four miles");
   console.log('niveau de transition, nuit, approches publiées, nouveaux terrains OK'); }
+
+// ── Lot 5 : pistes parallèles, SID, A/A, VFR spécial, panne radio, navigations réelles ──
+{ assert.strictEqual(R.rwyName('32R', false), '32 droite'); assert.strictEqual(R.rwyName('12L', true), '12 left'); assert.strictEqual(R.rwyName('13', false), '13');
+  assert.strictEqual(R.kt('vent 240 degrés 1 nœuds, rafales 11 nœuds'), 'vent 240 degrés 1 nœud, rafales 11 nœuds');
+  assert.strictEqual(R.bestRunway(['32R', '14L'], 150, 10), '14L');
+  for (const t of TERRAINS) {
+    for (const k of ['appr', 'sid', 'circuit']) for (const r of Object.keys(t[k] || {})) assert(t.pistes.includes(r), `${t.icao} ${k} ${r}`);
+    for (const [, v, c] of t.svfr || []) assert(v >= 800 && c >= 0);
+    for (const k of Object.keys(t.panne || {})) assert(PANNE_FAUX[k] && t.panne[k].length === 2, `${t.icao} panne ${k}`);
+  }
+  for (const [id, r] of Object.entries(NAV_REAL)) {
+    const A = TERRAINS.find(t => t.icao === r.from), B = TERRAINS.find(t => t.icao === r.to);
+    assert.deepStrictEqual(Object.keys(r.dep).sort(), [...A.pistes].sort(), `${id} : un départ par piste`);
+    if (!Array.isArray(r.arr)) assert.deepStrictEqual(Object.keys(r.arr).sort(), [...B.pistes].sort(), `${id} : une arrivée par piste`);
+  }
+  const sidQ = QUESTIONS.find(q => /BALSI 6P/.test(q.atc) && q.lang === 'fr'), T = i => TERRAINS.find(t => t.icao === i);
+  assert(/départ SOVOS 2V\b/.test(R.realTerrain(sidQ, T('LFBP'), null, null, '31').atc));
+  assert(R.realTerrain(sidQ, T('LFBA'), null, null, '29').noSid, 'Agen : pas de SID');
+  const al = QUESTIONS.find(q => q.ctx === 'Aligné piste 24.' && !q.cat);
+  const t32 = R.realTerrain(R.vary(al, { cs: 'F-GXYZ', memo: { rw24: '32' } }), T('LFBO'), null, null, '32R');
+  assert.strictEqual(t32.atc, 'F-GXYZ, piste 32 droite, autorisé décollage, vent 340 degrés 8 nœuds.');
+  const a = R.atisFromMetar('METAR X 191000Z 31010KT 9999 FEW030 12/05 Q1013 NOSIG', T('LFMT'), '30R', 'en');
+  assert(/Runway in use 30 right\./.test(a.text) && a.piste === '30 right' && R.atisChoices(a, T('LFMT').pistes).piste.includes('30 left'));
+  console.log('pistes parallèles, SID, VFR spécial, panne radio, navigations réelles OK'); }

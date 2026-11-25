@@ -6,7 +6,6 @@
 // aviationweather.gov (NOAA) dans metar.json (voir .github/workflows/pages.yml).
 const AIP_AD = icao => `AIP France, AD 2 ${icao} (AIRAC 29/10/2026)`;
 SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
-SUJETS.navreel = 'Navigation réelle Pau → Tarbes (cartes VAC, météo du jour)';
 
 // Indicatif radio = nom utilisé dans l'AIP (Tarbes : « Lourdes Tour »).
 // Pistes préférentielles (AD 2.20 / 2.21) : seule Nantes en publie une chiffrée. Biarritz demande la piste 09 au
@@ -67,6 +66,101 @@ const TERRAINS = [
     atsTxt: 'lun-ven 0700-1700, sam-dim et fériés 0800-1100 et 1215-1700 UTC en hiver, une heure plus tôt en été',
     pos: [44.1747, 0.5906], appr: { 29: ['RNP'] } },
 ];
+
+// Toulouse et Montpellier : pistes parallèles. Seule la piste du tour de piste avions de la VAC est utilisée (Toulouse :
+// 14L/32R, circuit 1500 ft à l'est ; Montpellier : piste principale 12L/30R, circuit au nord-est, 1000 ft minimum).
+// Désignation dite « 32 droite » / « runway 32 right » (Manuel p. 15). Montpellier : Tour secteur Nord 118,780 (VAC).
+TERRAINS.push(
+  { icao: 'LFBO', nom: 'Toulouse-Blagnac', radio: 'Blagnac', pistes: ['32R', '14L'], tour: '118,105', sol: '121,905', atis: '123,130',
+    app: { nom: 'Blagnac', freq: '121,105' }, fis: { nom: 'Toulouse', freq: '121,250' },
+    circuit: { '32R': 'droite', '14L': 'gauche' }, tdp: 1500, entree: 'EA', ats: null, atsTxt: 'H24',
+    pos: [43.635, 1.3678], appr: { '32R': ['ILS', 'TD', '108,35'], '14L': ['ILS', 'TG', '108,9'] } },
+  { icao: 'LFMT', nom: 'Montpellier-Méditerranée', radio: 'Montpellier', pistes: ['30R', '12L'], tour: '118,780', sol: '121,955', atis: '124,130',
+    app: { nom: 'Montpellier', freq: '130,855' }, circuit: { '12L': 'gauche', '30R': 'droite' }, tdp: 1000, entree: 'NC', ats: null, atsTxt: 'H24',
+    pos: [43.5833, 3.9614], appr: { '30R': ['ILS', 'FG', '108,55'], '12L': ['RNP'] } },
+);
+const T_ = icao => TERRAINS.find(t => t.icao === icao);
+
+// Départs IFR publiés (cartes SID de l'AD 2.24, par piste). Sans SID publiée pour la piste : exercice de mise en route
+// avec départ normalisé écarté.
+Object.entries({
+  LFBP: { 13: ['SOVOS 2D', 'USAKU 2D'], 31: ['SOVOS 2V', 'USAKU 2V'] },
+  LFBZ: { '09': ['DONOS 3D', 'SOVOS 3D', 'VAVIX 3D'], 27: ['DONOS 3F', 'SOVOS 3F', 'VAVIX 3F'] },
+  LFRS: { '03': ['BALNI 4N', 'ERBIN 4N', 'LUGEN 4N', 'LUSON 4N'], 21: ['LUGEN 4T', 'LUSON 4T'] },
+  LFBD: { '05': ['OBLOC 6Q', 'ROYAN 6Q', 'VAVIX 6Q'], 23: ['OBLOC 6P', 'ROYAN 6P', 'VAVIX 6P'], 29: ['OBLOC 6R', 'ROYAN 6R', 'VAVIX 6R'] },
+  LFMP: { 15: ['KELAM 5S', 'SIJAN 5S', 'SUBIL 5S'], 33: ['KELAM 5N', 'ORBIL 5N', 'SIJAN 5N'] },
+  LFMT: { '12L': ['BRUSC 8L', 'KELAM 8L', 'MARRI 8L'], '30R': ['BRUSC 8R', 'KELAM 8R', 'MARRI 8R'] },
+  LFBO: { '14L': ['AMOLO 7A', 'FINOT 7A', 'GAUDE 7A'], '32R': ['AMOLO 7B', 'FINOT 7B', 'GAUDE 7B'] },
+}).forEach(([icao, sid]) => { T_(icao).sid = sid; });
+
+// Hors horaires ATS : auto-information sur la fréquence A/A de l'AD 2.18 ou de la VAC (« Absence ATS : A/A, FR seulement »).
+// Biarritz (CTR reprise par Pyrénées) et Tarbes n'en publient pas : simple avertissement.
+T_('LFBA').aa = '121,305'; T_('LFMP').aa = '118,300'; T_('LFLY').aa = '118,105';
+
+// VFR spécial (cartes VAC, consignes particulières) : [cas, visibilité mini (m), plafond mini (ft)]. Sans minima
+// propres publiés : minima de SERA.5010 (visibilité 1500 m, plafond 600 ft). Toulouse (minima par itinéraire) : non traité.
+const SVFR_SERA = [['VFR spécial', 1500, 600]];
+Object.assign(T_('LFBP'), { svfr: [['en présence de trafic IFR', 3000, 1100], ['sans trafic IFR', 1500, 600]] });
+Object.assign(T_('LFBT'), { svfr: [['en présence de trafic IFR', 3000, 1100], ['sans trafic IFR', 1500, 600]] });
+Object.assign(T_('LFBZ'), { svfr: [['à l’arrivée', 1500, 800], ['au départ et en tour de piste', 3000, 1000]] });
+Object.assign(T_('LFRS'), { svfr: [['sans trafic IFR dans la CTR (non autorisé avec du trafic IFR)', 1500, 600]], svfrSera: true });
+Object.assign(T_('LFMT'), { svfr: [['VFR spécial', 1500, 0]] });
+for (const icao of ['LFLY', 'LFBD', 'LFMP', 'LFBA']) Object.assign(T_(icao), { svfr: SVFR_SERA, svfrSera: true });
+
+// Panne de radiocommunication (cartes VAC, consignes particulières de radiocommunication) : [situation, conduite à tenir]
+// en français et en anglais. Nantes et Agen : rien de propre publié.
+const PANNE = {
+  ctr: ['Panne radio dans la CTR, avant d’avoir reçu la clairance d’entrée dans le circuit de piste.',
+    'Radio failure inside the CTR, before receiving the clearance to join the circuit.'],
+  out: ['Panne radio avant d’avoir reçu l’autorisation de pénétrer dans la CTR.', 'Radio failure before receiving the clearance to enter the CTR.'],
+  dep: ['Panne radio juste après le décollage.', 'Radio failure just after take-off.'],
+};
+Object.assign(T_('LFBP'), { panne: { ctr: ['Sortir de la CTR par l’itinéraire VFR le plus approprié', 'Leave the CTR by the most suitable VFR route'],
+  out: ['Ne pas pénétrer dans la CTR', 'Do not enter the CTR'], dep: ['Afficher 7600 et faire demi-tour pour revenir à Pau', 'Squawk 7600 and turn back to Pau'] } });
+Object.assign(T_('LFBD'), { panne: { ctr: ['Sortir de la CTR par l’itinéraire VFR le plus approprié', 'Leave the CTR by the most suitable VFR route'],
+  out: ['Ne pas pénétrer dans la CTR', 'Do not enter the CTR'], dep: ['Quitter la CTR en respectant la dernière clairance (itinéraire et altitude)', 'Leave the CTR following the last clearance (route and altitude)'] } });
+Object.assign(T_('LFBZ'), { panne: { ctr: ['Afficher 7600 et se mettre en attente (si possible, appeler la Tour par téléphone)', 'Squawk 7600 and hold (if possible, phone the Tower)'] } });
+Object.assign(T_('LFBT'), { panne: { ctr: ['Quitter l’espace dès que possible', 'Leave the airspace as soon as possible'] } });
+Object.assign(T_('LFLY'), { panne: { ctr: ['Afficher 7600, suivre les dernières instructions ou passer à la verticale (2500 ft max), s’intégrer phares allumés en début de vent arrière ; feux à éclats de seuil = autorisation d’atterrir',
+  'Squawk 7600, follow the last instructions or overfly the field (2500 ft max), join early downwind with lights on; flashing threshold lights = landing clearance'] } });
+Object.assign(T_('LFMP'), { panne: { out: ['Afficher 7600 et ne pas entrer dans la CTR', 'Squawk 7600 and do not enter the CTR'],
+  dep: ['Afficher 7600 et sortir de la CTR selon la clairance de départ', 'Squawk 7600 and leave the CTR according to the departure clearance'] } });
+Object.assign(T_('LFMT'), { panne: { ctr: ['Sortir de la CTR par l’itinéraire VFR le plus approprié, sans couper les axes de piste', 'Leave the CTR by the most suitable VFR route without crossing the runway axes'],
+  out: ['Afficher 7600 et ne pas pénétrer dans la CTR', 'Squawk 7600 and do not enter the CTR'] } });
+Object.assign(T_('LFBO'), { panne: { ctr: ['Afficher 7600, poursuivre en VMC, atterrir sur l’aérodrome approprié le plus proche et signaler son arrivée au plus vite', 'Squawk 7600, continue in VMC, land at the nearest suitable aerodrome and report arrival as quickly as possible'] } });
+// mauvaises réponses plausibles, par situation (conduites publiées ailleurs ou erreurs courantes)
+const PANNE_FAUX = {
+  ctr: [['Poursuivre et atterrir sans clairance', 'Continue and land without clearance'], ['Afficher 7700 et poursuivre l’intégration', 'Squawk 7700 and continue joining'],
+    ['Se mettre en attente à la verticale du terrain', 'Hold overhead the field'], ['Quitter l’espace dès que possible', 'Leave the airspace as soon as possible'],
+    ['Sortir de la CTR par l’itinéraire VFR le plus approprié', 'Leave the CTR by the most suitable VFR route']],
+  out: [['Entrer dans la CTR et poursuivre vers le terrain', 'Enter the CTR and continue to the field'], ['Afficher 7700 et entrer dans la CTR', 'Squawk 7700 and enter the CTR'],
+    ['Se mettre en attente dans la CTR', 'Hold inside the CTR']],
+  dep: [['Poursuivre le vol prévu sans changement', 'Continue the planned flight unchanged'], ['Afficher 7700 et poursuivre', 'Squawk 7700 and continue'],
+    ['Se mettre en attente à la verticale du terrain', 'Hold overhead the field'], ['Afficher 7600 et faire demi-tour pour revenir au terrain', 'Squawk 7600 and turn back to the field']],
+};
+
+// Navigations réelles (cartes VAC) : départ par le point de sortie de la procédure de départ, information de vol, entrée
+// par le point publié, tour de piste de la VAC. `dep` par piste : [point, texte FR, texte EN, coordonnées du point] ;
+// `arr` : [point, coordonnées] (ou par piste) ; `alt` : altitude de croisière choisie par le pilote (ft) ; `fis` : [nom, fréquence]
+// puis, si besoin, la fréquence de premier contact demandée par la VAC du terrain d'arrivée.
+const NAV_REAL = {
+  'LFBP-LFBT': { from: 'LFBP', to: 'LFBT', alt: 2500, fis: [['Pyrénées', '126,530']],
+    dep: { 13: ['SE', 'Départ Sud (VAC) : à 500 ft, virage à droite vers SA en montée vers 2000 ft, puis SE.', 'Southern departure (VAC): at 500 ft AAL, turn right towards SA, climbing to 2000 ft, then SE.', [43.2789, -0.3878]],
+      31: ['SW', 'Départ Sud (VAC) : à 500 ft, virage à gauche vers SW en montée vers 2000 ft.', 'Southern departure (VAC): at 500 ft AAL, turn left towards SW, climbing to 2000 ft.', [43.3211, -0.5778]] },
+    arr: ['W', [43.1928, -0.1164]], vacDep: 'TXT 02 (procédures de départ)', vacArr: 'TXT 01 (points de compte rendu)' },
+  'LFBZ-LFBP': { from: 'LFBZ', to: 'LFBP', alt: 2500, fis: [['Biarritz', '119,180'], ['Pyrénées', '126,530']],
+    dep: { '09': ['E', 'Sortie par le point E (A64, sortie 4), carte VAC.', 'Exit via point E (A64 exit 4), VAC chart.', [43.4667, -1.2869]],
+      27: ['E', 'Sortie par le point E (A64, sortie 4), carte VAC.', 'Exit via point E (A64 exit 4), VAC chart.', [43.4667, -1.2869]] },
+    arr: { 13: ['SW', [43.3211, -0.5778]], 31: ['S', [43.2986, -0.4867]] }, arrFis: 'Pyrénées',
+    vacDep: 'TXT 02 (points de compte rendu)', vacArr: 'TXT 02 (arrivée du Sud : premier contact Pyrénées Information, 2500 ft)' },
+  'LFBD-LFBA': { from: 'LFBD', to: 'LFBA', alt: 1500, fis: [['Aquitaine', '120,575']],
+    dep: { '05': ['SE', 'Itinéraire SA puis SE à 1500 ft (VAC).', 'Route SA then SE at 1500 ft (VAC).', [44.7458, -0.5042]],
+      23: ['SE', 'Itinéraire SA puis SE à 1500 ft (VAC).', 'Route SA then SE at 1500 ft (VAC).', [44.7458, -0.5042]],
+      29: ['SE', 'Itinéraire SA puis SE à 1500 ft (VAC).', 'Route SA then SE at 1500 ft (VAC).', [44.7458, -0.5042]],
+      11: ['S', 'Itinéraire OA puis S à 1500 ft (VAC).', 'Route OA then S at 1500 ft (VAC).', [44.7167, -0.6903]] },
+    arr: ['W', [44.2286, 0.3520]], vacDep: 'TXT 02 (itinéraires VFR)', vacArr: 'TXT 01 (points de compte rendu)' },
+};
+for (const [id, r] of Object.entries(NAV_REAL)) SUJETS['navreel:' + id] = `Navigation réelle ${T_(r.from).nom.split('-')[0]} → ${T_(r.to).nom.split('-')[0]} (cartes VAC, météo du jour)`;
 
 // Navigation VFR complète : messages enchaînés dans l'ordre (champ `nav`), même indicatif et mêmes valeurs.
 // Départ de Saint-Exémery (fictif, piste 24), arrivée à Montrouvel (fictif, piste 33). `dest` : terrain d'arrivée

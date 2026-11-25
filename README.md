@@ -50,10 +50,23 @@ Réalisme :
   2 nautiques, même sens, 1700 pieds plus haut »), sur le modèle du manuel (p. 89-92). OpenSky ne donne pas le type
   d'avion : il est remplacé par « rapide » ou « lent » selon la vitesse. Positions vieilles de 30 minutes au plus ;
   relevé de plus de 2 heures : ignoré ; aucun avion à proximité : pas d'exercice.
-- **🧭 Navigation réelle Pau → Tarbes** (sujet dédié) : pistes face au vent des deux METAR, départ Sud de la VAC de Pau
-  (piste 13 : SA puis SE ; piste 31 : SW), Pyrénées Information 126,530, Lourdes Tour 119,055, entrée par W (Pontacq),
-  tour de piste main gauche ; de nuit, pas d'atterrissage piste 02 (VAC). Si le METAR est sous les minima VFR d'une zone
-  de contrôle (SERA.5005 b)), le premier message le signale.
+- **🧭 Navigations réelles** (sujets dédiés : Pau → Tarbes, Biarritz → Pau, Bordeaux → Agen) : pistes face au vent des
+  deux METAR, sortie par le point de la procédure de départ de la VAC, information de vol (SIV), premier contact demandé
+  par la VAC d'arrivée (Pau : Pyrénées Information), entrée par le point publié, tour de piste de la VAC. Heure UTC
+  simulée et temps de vol à 100 kt entre les points (vol en accéléré) ; à l'heure d'arrivée, Tour fermée signalée.
+  De nuit à Tarbes, pas d'atterrissage piste 02 (VAC). METAR sous les minima VFR d'une zone de contrôle : signalé.
+- **🌙 Hors horaires ATS** : à Agen, Perpignan et Lyon-Bron, la série passe en auto-information sur la fréquence A/A
+  publiée (AD 2.18 / VAC, « FR seulement ») ; Biarritz et Tarbes n'en publient pas : avertissement.
+- **🌫️ VFR spécial** : quand le METAR est sous les minima VFR, question « le VFR spécial est-il possible ? » avec les
+  minima de la VAC (Pau, Tarbes : avec / sans trafic IFR ; Biarritz : arrivée / départ ; Montpellier) ou de SERA.5010.
+- **📵 Panne radio** : conduite publiée sur la VAC du terrain (Pau, Bordeaux, Biarritz, Tarbes, Bron, Perpignan,
+  Montpellier, Toulouse).
+- **🛫 Départs IFR publiés** : le départ fictif BALSI 6P devient une SID réelle de la piste en service (AD 2.24) ;
+  sans SID publiée (Tarbes, Bron, Agen) : exercice écarté.
+- **⏸️ Clairance conditionnelle réelle** : si OpenSky voit un avion en courte finale de la piste en service, « derrière le
+  trafic en courte finale, alignez-vous et attendez… derrière » (Manuel p. 57-58 ; type d'avion inconnu).
+- **🛬 Toulouse-Blagnac et Montpellier** : piste du tour de piste de la VAC (14L/32R ; 12L/30R), dite « piste 32 droite »
+  / « runway 32 right » (Manuel p. 15).
 - **📏 Niveau de transition** : ajouté à l'ATIS reconstitué et aux messages, calculé avec le QNH réel (plus bas niveau
   de vol à au moins 1000 ft au-dessus de l'altitude de transition de 5000 ft, AIP ENR 1.7.2.3 et cartes IAC ; environ
   28 ft par hPa). Le vrai niveau est donné par le contrôle.
@@ -92,8 +105,7 @@ Réalisme :
   la clairance et on peut réessayer (essai non compté).
 - **Premier appel libre** : on rédige soi-même la demande ; le site vérifie la présence et l'ordre des éléments
   du modèle du manuel (p. 45 et 149).
-- **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes, Bordeaux, Perpignan, Agen ; Toulouse et Montpellier non
-  proposés : pistes parallèles) : nom radio, pistes et fréquences Tour / Sol de l'AIP
+- **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes, Bordeaux, Perpignan, Agen, Toulouse, Montpellier) : nom radio, pistes et fréquences Tour / Sol de l'AIP
   (AD 2, AIRAC du 29/10/2026) ; **météo réelle** : le dernier METAR est affiché, la piste est choisie face au vent, et le
   vent et le QNH des messages sont ceux du METAR (vent variable : vent de l'exercice ; METAR de plus de 3 h : ignoré).
   Les METAR viennent d'aviationweather.gov (NOAA), récupérés par GitHub toutes les 30 minutes (`.github/workflows/pages.yml`).

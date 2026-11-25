@@ -100,10 +100,16 @@ function gradeElements(text, elements, callsigns) {
 // Terrain réel : piste la plus face au vent du METAR (première piste si vent variable ou inconnu).
 // Piste en service : la plus face au vent du METAR (première piste si vent variable ou inconnu), sauf piste
 // préférentielle publiée dans l'AIP (`pref` : piste gardée tant que le vent arrière ne dépasse pas `tail` nœuds).
+// Pistes parallèles : « 32R » se dit « piste 32 droite » / « runway 32 right » (Manuel p. 15).
+const rwNum = d => parseInt(d, 10);
+// « 1 nœud » / « 1 knot » au singulier
+const kt = s => s.replace(/\b(\d+) (nœuds?|knots?)\b/g, (_, n, u) => `${n} ${u[0] === 'n' ? (n === '1' ? 'nœud' : 'nœuds') : (n === '1' ? 'knot' : 'knots')}`);
+const PAR = { L: ['gauche', 'left'], R: ['droite', 'right'] };
+const rwyName = (d, en) => { const m = /^(\d\d)([LR])$/.exec(d); return m ? `${m[1]} ${PAR[m[2]][en ? 1 : 0]}` : d; };
 function bestRunway(pistes, wdir, wspd = 0, pref = null) {
-  if (pref && (typeof wdir !== 'number' || wspd * -Math.cos((wdir - +pref.piste * 10) * Math.PI / 180) <= pref.tail)) return pref.piste;
+  if (pref && (typeof wdir !== 'number' || wspd * -Math.cos((wdir - rwNum(pref.piste) * 10) * Math.PI / 180) <= pref.tail)) return pref.piste;
   if (typeof wdir !== 'number') return pistes[0];
-  const off = p => { const d = Math.abs(+p * 10 - wdir) % 360; return Math.min(d, 360 - d); };
+  const off = p => { const d = Math.abs(rwNum(p) * 10 - wdir) % 360; return Math.min(d, 360 - d); };
   return pistes.reduce((a, b) => (off(b) < off(a) ? b : a));
 }
 // Après vary (la piste mémorisée est déjà la piste réelle) : nom du terrain, fréquences de la Tour et du Sol (en-tête
@@ -113,9 +119,10 @@ const ATIS_WORD = /\b(information |ATIS « |ATIS ")(Alfa|Bravo|Charlie|Delta|Ech
 // Fréquence aux deux premières décimales inversées : la mauvaise réponse du QCM qui remplace la fausse fréquence.
 const swapFreq = f => { const [mhz, dec] = f.split(','), i = dec[0] !== dec[1] ? 0 : 1; return `${mhz},${dec.slice(0, i)}${dec[i + 1]}${dec[i]}${dec.slice(i + 2)}`; };
 const SIDE = { gauche: 'droite', droite: 'gauche', left: 'right', right: 'left' };
-function realTerrain(q, t, wx, letter, rwy) {
+function realTerrain(q, t, wx, letter, rwy, pick = 0) {
   if (!t || /^(afis|atis)$/.test(q.cat || '')) return q;
   const en = q.lang === 'en', fq = f => (en ? f.replace(',', '.') : f);
+  const full = d => t.pistes.find(p => rwNum(p) === +d) || d; // « 32 » → « 32R » sur un terrain à pistes parallèles
   // fréquences citées dans un message (« contactez Tour 118,7 », « essai radio 118,7 », « contactez Info 125,7 »)
   const fis = t.fis && `${t.fis.nom} Information `;
   const freqs = s => {
@@ -137,7 +144,7 @@ function realTerrain(q, t, wx, letter, rwy) {
   };
   const rw = (`${q.atc} ${q.answers[0]}`.match(/\b(?:piste|runway) (\d\d)\b/) || [])[1];
   const side0 = (`${q.atc} ${q.answers[0]}`.match(/\bmain (droite|gauche)\b|\b(right|left)-hand\b/) || []).slice(1).find(Boolean);
-  const want = !q.dest && rw && t.circuit?.[rw];
+  const want = !q.dest && rw && t.circuit?.[full(rw)];
   const flip = want && side0 && (en ? { droite: 'right', gauche: 'left' }[want] : want) !== side0;
   const circuit = s => (flip ? s.replace(/\bmain (droite|gauche)\b/g, (_, x) => `main ${SIDE[x]}`).replace(/\b(right|left)-hand\b/g, (_, x) => `${SIDE[x]}-hand`) : s);
   const atis = s => (letter && !q.dest ? s.replace(ATIS_WORD, `$1${letter}`) : s);
@@ -162,9 +169,14 @@ function realTerrain(q, t, wx, letter, rwy) {
   const tl = wx?.qnh && !q.dest ? transitionLevel(wx.qnh) : null;
   const trans = s => (tl ? s.replace(/\b(niveau de transition|transition level) \d+/gi, `$1 ${tl}`) : s);
   // approche aux instruments réellement publiée pour la piste (AD 2.24) à la place de l'ILS fictif
-  const ar = t.appr?.[rw || rwy], ils = /\bapproche ILS\b|\bILS approach\b/;
+  const key = rw ? full(rw) : rwy, ar = t.appr?.[key], ils = /\bapproche ILS\b|\bILS approach\b/;
+  // départ normalisé publié pour la piste (SID) à la place du départ fictif BALSI 6P
+  const sids = t.sid?.[key], sid = s => (sids ? s.replace(/\bBALSI 6P\b/g, sids[pick % sids.length]) : s);
+  const par = t.pistes.some(p => /[LR]$/.test(p)) && !q.dest;
+  const side = s => (par ? s.replace(/\b(piste|runway) (\d\d)\b(?! ?(?:[LR]\b|gauche|droite|left|right))/gi, (m, w, d) => {
+    const f = full(d); return /[LR]$/.test(f) ? `${w} ${rwyName(f, en)}` : m; }) : s);
   const appr = s => (ar ? s.replace(/\bapproche ILS\b/g, `approche ${ar[0]}`).replace(/\bILS approach\b/g, `${ar[0]} approach`) : s);
-  const f = s => appr(trans(circuit(vac(atis(freqs(qnh(wind(name(s)))))))));
+  const f = s => kt(side(sid(appr(trans(circuit(vac(atis(freqs(qnh(wind(name(s))))))))))));
   // sur ces aérodromes, le roulage se fait avec le Sol (fréquence SOL de l'AIP), le reste avec la Tour ; sans Sol publié
   // (Agen), tout se fait avec la Tour
   const sol = t.sol && /^(Tour|Tower) 118[,.]700$/.test(q.st || '') && /^\S+, (roulez|taxi)\b/i.test(q.atc);
@@ -176,8 +188,9 @@ function realTerrain(q, t, wx, letter, rwy) {
   const out = { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
   if (ils.test(`${q.ctx} ${q.atc} ${q.answers[0]}`) && !q.dest) {
     if (!ar) out.noAppr = true; // pas d'approche publiée pour cette piste : exercice écarté
-    else if (ar[2]) out.ctx += en ? ` (${ar[0]} runway ${rw || rwy}: localizer ${ar[1]} ${fq(ar[2])})` : ` (${ar[0]} piste ${rw || rwy} : LOC ${ar[1]} ${ar[2]})`;
+    else if (ar[2]) out.ctx += en ? ` (${ar[0]} runway ${rwyName(key, en)}: localizer ${ar[1]} ${fq(ar[2])})` : ` (${ar[0]} piste ${rwyName(key, en)} : LOC ${ar[1]} ${ar[2]})`;
   }
+  if (/\bBALSI 6P\b/.test(q.atc) && !sids) out.noSid = true; // pas de départ normalisé publié : exercice écarté
   if (q.elements) { // premier appel libre : le terrain et la lettre d'ATIS attendus suivent les substitutions
     const key = normalize(t.radio).join('');
     out.elements = q.elements.map(([l, re]) => [l, re === 'CS' ? re : re.replace('exemery', key).replace(/^1500 /, alt && arrivee ? `${alt} ` : '1500 ')
@@ -260,7 +273,7 @@ function atisFromMetar(raw, t, piste, lang) {
   const hh = +m.time.slice(0, 2), hello = en ? (hh < 12 ? 'Good morning' : hh < 18 ? 'Good afternoon' : 'Good evening') : hh < 18 ? 'Bonjour' : 'Bonsoir';
   const parts = [en ? `${hello}, this is ${t.radio} information ${letter}, recorded at ${m.time} UTC`
     : `${hello}, ici ${t.radio} information ${letter}, enregistrée à ${m.time} UTC`,
-  `${en ? 'Runway in use' : 'Piste en service'} ${piste}`, `${en ? 'Transition level' : 'Niveau de transition'} ${transitionLevel(+m.qnh)}`, wind];
+  `${en ? 'Runway in use' : 'Piste en service'} ${rwyName(piste, en)}`, `${en ? 'Transition level' : 'Niveau de transition'} ${transitionLevel(+m.qnh)}`, wind];
   if (m.cavok) parts.push('CAVOK');
   else {
     parts.push(`${en ? 'Visibility' : 'Visibilité'} ${visTxt}`);
@@ -271,7 +284,7 @@ function atisFromMetar(raw, t, piste, lang) {
   if (m.nosig) parts.push(en ? 'Trend NOSIG' : 'Tendance NOSIG');
   parts.push(en ? `Inform ${t.radio} on initial contact you have received information ${letter}`
     : `Informez ${t.radio} dès le premier contact que vous avez reçu l'information ${letter}`);
-  return { text: parts.join('. ') + '.', letter, piste, qnh: m.qnh, tl: String(transitionLevel(+m.qnh)), wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
+  return { text: kt(parts.join('. ') + '.'), letter, piste: rwyName(piste, en), des: piste, en, qnh: m.qnh, tl: String(transitionLevel(+m.qnh)), wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
 }
 
 // Mauvaises réponses des questions sur l'ATIS réel : trois choix plausibles et distincts pour chaque question
@@ -279,18 +292,19 @@ function atisFromMetar(raw, t, piste, lang) {
 function atisChoices(a, pistes) {
   const rev = x => [...x].reverse().join(''), pad = (n, l) => String(n).padStart(l, '0');
   const three = (good, arr) => [...new Set(arr.filter(x => x && x !== good))].slice(0, 3).sort(() => Math.random() - 0.5);
-  const rwy = n => (n >= 1 && n <= 36 ? pad(n, 2) : null), p = +a.piste, other = pistes.find(x => x !== a.piste);
+  const des = a.des || a.piste, name = d => d && rwyName(d, a.en), swapLR = d => d.replace(/[LR]$/, x => (x === 'L' ? 'R' : 'L'));
+  const rwy = n => (n >= 1 && n <= 36 ? pad(n, 2) : null), p = rwNum(des), other = pistes.find(x => x !== des);
   const li = ATIS_LETTERS.indexOf(a.letter), q = +a.qnh;
   const out = {
     letter: three(a.letter, [1, 25, 2, 13].map(i => ATIS_LETTERS[(li + i) % 26])),
-    piste: three(a.piste, [other, rwy(+rev(a.piste)), rwy(p + 1), rwy(p - 1), rwy(+other + 1)]),
+    piste: three(a.piste, [/[LR]$/.test(des) ? swapLR(des) : null, other, rwy(+rev(des.slice(0, 2))), rwy(p + 1), rwy(p - 1), rwy(rwNum(other) + 1)].map(name)),
     qnh: three(a.qnh, [a.qnh.slice(0, -2) + rev(a.qnh.slice(-2)), String(q + 10), String(q - 1), String(q + 1), '1013']),
     tl: three(a.tl, ['50', '60', '70', '80', '55']),
   };
   if (a.wind) {
     const [d, , s] = a.wind.split(' '), w = (dd, ss) => a.wind.replace(`${d} `, `${dd} `).replace(` ${s} `, ` ${ss} `);
     const dir = n => pad(((n % 360) + 360) % 360 || 360, 3);
-    out.wind = three(a.wind, [w(dir(+d + 40), s), w(dir(+d - 40), s), w(d, String(+s + 10)), w(d, String(+s + 5))]);
+    out.wind = three(a.wind = kt(a.wind), [w(dir(+d + 40), s), w(dir(+d - 40), s), w(d, String(+s + 10)), w(d, String(+s + 5))]);
   }
   return out;
 }
@@ -360,4 +374,4 @@ function atsOpen(t, date = new Date()) {
   return plages.some(([a, b]) => (min(a) <= min(b) ? now >= min(a) && now < min(b) : now >= min(a) || now < min(b)));
 }
 
-if (typeof module !== 'undefined') module.exports = { transitionLevel, sunElevation, isNight, nightChange, atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
+if (typeof module !== 'undefined') module.exports = { kt, rwyName, transitionLevel, sunElevation, isNight, nightChange, atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
