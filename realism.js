@@ -158,14 +158,26 @@ function realTerrain(q, t, wx, letter, rwy) {
       if (!q.wrong.map(sub).includes(sub(q.answers[0]))) qnh = sub; // sinon une mauvaise réponse deviendrait juste
     }
   }
-  const f = s => circuit(vac(atis(freqs(qnh(wind(name(s)))))));
-  // sur ces aérodromes, le roulage se fait avec le Sol (fréquence SOL de l'AIP), le reste avec la Tour
-  const sol = /^(Tour|Tower) 118[,.]700$/.test(q.st || '') && /^\S+, (roulez|taxi)\b/i.test(q.atc);
+  // niveau de transition calculé avec le QNH réel (altitude de transition 5000 ft, cartes IAC ; règle AIP ENR 1.7.2.3)
+  const tl = wx?.qnh && !q.dest ? transitionLevel(wx.qnh) : null;
+  const trans = s => (tl ? s.replace(/\b(niveau de transition|transition level) \d+/gi, `$1 ${tl}`) : s);
+  // approche aux instruments réellement publiée pour la piste (AD 2.24) à la place de l'ILS fictif
+  const ar = t.appr?.[rw || rwy], ils = /\bapproche ILS\b|\bILS approach\b/;
+  const appr = s => (ar ? s.replace(/\bapproche ILS\b/g, `approche ${ar[0]}`).replace(/\bILS approach\b/g, `${ar[0]} approach`) : s);
+  const f = s => appr(trans(circuit(vac(atis(freqs(qnh(wind(name(s)))))))));
+  // sur ces aérodromes, le roulage se fait avec le Sol (fréquence SOL de l'AIP), le reste avec la Tour ; sans Sol publié
+  // (Agen), tout se fait avec la Tour
+  const sol = t.sol && /^(Tour|Tower) 118[,.]700$/.test(q.st || '') && /^\S+, (roulez|taxi)\b/i.test(q.atc);
+  const twr = en ? 'Tower' : 'Tour';
   const st = (q.st || '').replace(/^(Tour|Tower) 118[,.]700$/, (_, x) => (sol ? `${t.radio} ${en ? 'Ground' : 'Sol'} ${fq(t.sol)}` : `${t.radio} ${x} ${fq(t.tour)}`))
-    .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => `${t.radio} ${x} ${fq(t.sol)}`)
+    .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => (t.sol ? `${t.radio} ${x} ${fq(t.sol)}` : `${t.radio} ${twr} ${fq(t.tour)}`))
     .replace(/^(Approche|Approach) 120[,.]850$/, (m, x) => (t.app ? `${t.app.nom} ${x} ${fq(t.app.freq)}` : m))
     .replace(/^Info(?:rmation)? 125[,.]700$/, m => (fis ? fis + fq(t.fis.freq) : m));
   const out = { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
+  if (ils.test(`${q.ctx} ${q.atc} ${q.answers[0]}`) && !q.dest) {
+    if (!ar) out.noAppr = true; // pas d'approche publiée pour cette piste : exercice écarté
+    else if (ar[2]) out.ctx += en ? ` (${ar[0]} runway ${rw || rwy}: localizer ${ar[1]} ${fq(ar[2])})` : ` (${ar[0]} piste ${rw || rwy} : LOC ${ar[1]} ${ar[2]})`;
+  }
   if (q.elements) { // premier appel libre : le terrain et la lettre d'ATIS attendus suivent les substitutions
     const key = normalize(t.radio).join('');
     out.elements = q.elements.map(([l, re]) => [l, re === 'CS' ? re : re.replace('exemery', key).replace(/^1500 /, alt && arrivee ? `${alt} ` : '1500 ')
@@ -248,7 +260,7 @@ function atisFromMetar(raw, t, piste, lang) {
   const hh = +m.time.slice(0, 2), hello = en ? (hh < 12 ? 'Good morning' : hh < 18 ? 'Good afternoon' : 'Good evening') : hh < 18 ? 'Bonjour' : 'Bonsoir';
   const parts = [en ? `${hello}, this is ${t.radio} information ${letter}, recorded at ${m.time} UTC`
     : `${hello}, ici ${t.radio} information ${letter}, enregistrée à ${m.time} UTC`,
-  `${en ? 'Runway in use' : 'Piste en service'} ${piste}`, wind];
+  `${en ? 'Runway in use' : 'Piste en service'} ${piste}`, `${en ? 'Transition level' : 'Niveau de transition'} ${transitionLevel(+m.qnh)}`, wind];
   if (m.cavok) parts.push('CAVOK');
   else {
     parts.push(`${en ? 'Visibility' : 'Visibilité'} ${visTxt}`);
@@ -259,7 +271,7 @@ function atisFromMetar(raw, t, piste, lang) {
   if (m.nosig) parts.push(en ? 'Trend NOSIG' : 'Tendance NOSIG');
   parts.push(en ? `Inform ${t.radio} on initial contact you have received information ${letter}`
     : `Informez ${t.radio} dès le premier contact que vous avez reçu l'information ${letter}`);
-  return { text: parts.join('. ') + '.', letter, piste, qnh: m.qnh, wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
+  return { text: parts.join('. ') + '.', letter, piste, qnh: m.qnh, tl: String(transitionLevel(+m.qnh)), wind: w.calm ? null : `${w.dir} ${en ? 'degrees' : 'degrés'} ${w.spd} ${en ? 'knots' : 'nœuds'}` };
 }
 
 // Mauvaises réponses des questions sur l'ATIS réel : trois choix plausibles et distincts pour chaque question
@@ -273,6 +285,7 @@ function atisChoices(a, pistes) {
     letter: three(a.letter, [1, 25, 2, 13].map(i => ATIS_LETTERS[(li + i) % 26])),
     piste: three(a.piste, [other, rwy(+rev(a.piste)), rwy(p + 1), rwy(p - 1), rwy(+other + 1)]),
     qnh: three(a.qnh, [a.qnh.slice(0, -2) + rev(a.qnh.slice(-2)), String(q + 10), String(q - 1), String(q + 1), '1013']),
+    tl: three(a.tl, ['50', '60', '70', '80', '55']),
   };
   if (a.wind) {
     const [d, , s] = a.wind.split(' '), w = (dd, ss) => a.wind.replace(`${d} `, `${dd} `).replace(` ${s} `, ` ${ss} `);
@@ -307,6 +320,35 @@ function trafficInfo(own, s, lang) {
   return { cs: (cs || '').trim(), clock, dist, dz, pos, text: `${en ? 'traffic' : 'trafic'} ${pos}, ${M[mv]}, ${spd ? S[spd] + ', ' : ''}${Z}` };
 }
 
+// Niveau de transition : plus bas niveau de vol (multiple de 10) situé au moins 1000 ft au-dessus de l'altitude de
+// transition (AIP ENR 1.7.2.3), avec environ 28 ft par hPa d'écart au 1013. Valeur calculée : le vrai niveau est
+// donné par l'organisme de contrôle.
+function transitionLevel(qnh, ta = 5000) {
+  for (let fl = 10; ; fl += 10) if (fl * 100 + (qnh - 1013) * 28 >= ta + 1000) return fl;
+}
+
+// Hauteur du soleil (degrés) au lieu (lat, lon) et à l'instant `date` (formules astronomiques simplifiées, ±0,5°).
+// Nuit aéronautique (SERA, article 2) : de la fin du crépuscule civil du soir au début du crépuscule civil du matin,
+// c'est-à-dire soleil à plus de 6° sous l'horizon.
+function sunElevation(lat, lon, date = new Date()) {
+  const d = (date - Date.UTC(2000, 0, 1, 12)) / 864e5, r = Math.PI / 180;
+  const g = (357.529 + 0.98560028 * d) * r, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * r, e = (23.439 - 0.00000036 * d) * r;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const H = ((18.697374558 + 24.06570982441908 * d) * 15 + lon) * r - ra;
+  return Math.asin(Math.sin(lat * r) * Math.sin(dec) + Math.cos(lat * r) * Math.cos(dec) * Math.cos(H)) / r;
+}
+const isNight = (pos, date = new Date()) => sunElevation(pos[0], pos[1], date) < -6;
+// Prochain changement jour / nuit (à 5 min près), en HHMM UTC.
+function nightChange(pos, date = new Date()) {
+  const now = isNight(pos, date);
+  for (let m = 5; m <= 1440; m += 5) {
+    const t = new Date(+date + m * 60000);
+    if (isNight(pos, t) !== now) return t.toISOString().slice(11, 16).replace(':', '');
+  }
+  return null;
+}
+
 // Tour ouverte ? Horaires ATS de l'AIP (UTC hiver ; en été, une heure plus tôt). `date` : maintenant.
 function lastSunday(y, m) { const d = new Date(Date.UTC(y, m + 1, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d; }
 function atsOpen(t, date = new Date()) {
@@ -318,4 +360,4 @@ function atsOpen(t, date = new Date()) {
   return plages.some(([a, b]) => (min(a) <= min(b) ? now >= min(a) && now < min(b) : now >= min(a) || now < min(b)));
 }
 
-if (typeof module !== 'undefined') module.exports = { atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
+if (typeof module !== 'undefined') module.exports = { transitionLevel, sunElevation, isNight, nightChange, atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };

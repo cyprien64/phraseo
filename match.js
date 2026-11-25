@@ -35,7 +35,10 @@ function speakable(t, lang) {
     const th = Math.floor(n / 1000), h = n % 1000 / 100;
     return [th ? `${digits(th)} thousand` : '', h ? `${DIG[h]} hundred` : ''].filter(Boolean).join(' ');
   };
+  // gisement horaire : par groupe de deux (« eleven o'clock », Manuel p. 13)
+  const CLOCK = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
   return t
+    .replace(/\b(1[0-2]|[1-9]) o'clock/g, (_, n) => `${CLOCK[n]} o'clock`)
     .replace(/(\d+)\s*feet/g, (_, n) => `${round(+n)} feet`)
     .replace(/\b(level|speed|squawk|QNH) (\d+)/g, (_, w, n) => `${w} ${+n % 100 ? digits(n) : round(+n)}`)
     .replace(/(\d+)\.(\d+)/g, (_, a, b) => `${digits(a)} decimal ${digits(b.length === 3 && b.endsWith('00') ? b[0] : b)}`)

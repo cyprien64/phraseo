@@ -121,6 +121,7 @@ function start(sess = null) {
   // terrain réel (pas pour le défi, identique pour tous) : piste face au vent du dernier METAR
   terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === $('#terrain').value) || null;
   wx = terrain && wxOf(terrain.icao);
+  near = nearTraffic(terrain);
   if (terrain) memo.rw24 = memo.rw32 = memo.rw12 = bestRunway(terrain.pistes, wx?.wdir, wx?.wspd, terrain.pref);
   atisLetter = terrain && wx ? atisFromMetar(wx.raw, terrain, memo.rw24, 'fr')?.letter : null; // même lettre dans toute la série
   const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav', 'trafic'].includes($('#sujet').value)
@@ -139,12 +140,23 @@ function start(sess = null) {
   }
   // trafic réel autour du terrain (relevé OpenSky) : information de trafic juste après le décollage
   if (live.length && ['all', 'trafic'].includes($('#sujet').value)) pool.splice(live.length, 0, ...liveTraffic(live[0].lang));
+  // approche ILS fictive : remplacée par l'approche publiée pour la piste en service ; aucune publiée : exercice écarté
+  if (terrain && !terrain.appr?.[memo.rw24]) pool = pool.filter(q => !/approche ILS|ILS approach/.test(`${q.ctx} ${q.atc} ${q.answers?.[0]}`));
+  // nuit aéronautique au terrain : deux questions de vol de nuit en tête de série
+  night = !!terrain?.pos && isNight(terrain.pos);
+  if (live.length && night && su === 'all') pool.splice(live.length, 0, ...QUESTIONS.filter(q => q.cat === 'nuit' && q.lang === live[0].lang
+    && (!q.terrain || q.terrain === terrain.icao)).sort(() => Math.random() - 0.5).slice(0, 2));
+  // détresse en situation : depuis un vrai point de la carte VAC, sur la vraie fréquence de la Tour
+  if (live.length && ['all', 'urgence'].includes(su)) pool.splice(Math.min(pool.length, live.length + 3), 0, ...liveEmergency(live[0].lang));
+  // navigation réelle Pau → Tarbes (cartes VAC, METAR des deux terrains)
+  if (su === 'navreel' && !session && !['alpha', 'err', 'due'].includes(r))
+    pool = (val('lang') === 'all' ? ['fr', 'en'] : [val('lang')]).flatMap(liveNav);
   stats();
   next();
 }
 
 // ── Réalisme : prépare la carte (valeurs aléatoires, indicatif abrégé, message pour un autre avion, coupure) ──
-let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null;
+let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null, night = false, near = 0;
 // METAR officiels récupérés par GitHub toutes les 30 min (metar.json, format aviationweather.gov) ; trop ancien = ignoré
 let METAR = [];
 function wxOf(icao) {
@@ -183,6 +195,19 @@ function prepare(q) {
     return { ...c, atc: c.atc.replace(shown, other), notMine: other };
   }
   const cut = ($('#cuts').checked || xp) && c.atc && !c.q && c.cat !== 'atis' && Math.random() < 0.3 && cutMessage(c.atc);
+  // transmissions simultanées : un autre avion émet en même temps que le contrôleur (sifflement, message brouillé)
+  if (+val('niv') >= 2 && c.atc && c.st && !c.q && !c.elements && c.cat !== 'atis' && Math.random() < (xp ? 0.15 : 0.08)) {
+    const o = QUESTIONS.filter(x => x.lang === c.lang && x.st && x.atc && !x.q && !x.elements && x.cat !== 'nav');
+    const ocs = newCallsign();
+    let ov = vary(o[Math.floor(Math.random() * o.length)], { cs: ocs, values: true, memo: { ...memo } }); // même piste, mêmes valeurs
+    if (terrain) ov = realTerrain(ov, terrain, wx, atisLetter, memo.rw24);
+    return { ...c, blocked: { text: ov.answers[0], lang: c.lang, st: c.st, pilot: true, cs: ocs }, full: c, qcmOnly: false, niv: 1,
+      q: en ? 'Two stations transmitted at the same time: the message is garbled. What do you say?'
+        : 'Deux stations ont émis en même temps : le message est brouillé. Que dites-vous ?',
+      answers: [en ? `Say again, ${shown}` : `Répétez, ${shown}`],
+      wrong: [c.answers[0], en ? `Roger, ${shown}` : `Reçu, ${shown}`, `Wilco, ${shown}`],
+      src: `${SERA('SERA.14045, tableau S14-4')} (RÉPÉTEZ / SAY AGAIN) ; ${MANUEL(24)} (transmissions simultanées : le contrôleur fait retransmettre)` };
+  }
   if (cut) return { ...c, cut, full: c, qcmOnly: false, niv: 1,
     q: en ? 'The end of the message was cut off. What do you say?' : 'La fin du message a été coupée. Que dites-vous ?',
     answers: [en ? `Say again all after ${cut.word}, ${shown}` : `Répétez tout après ${cut.word}, ${shown}`],
@@ -195,7 +220,8 @@ function prepare(q) {
 // Fréquence vivante : avant certains messages, un autre avion échange avec le même poste (message et collationnement
 // tirés des exercices vérifiés, avec un autre indicatif). Plus fréquent aux niveaux élevés.
 function chatterFor(q, c) {
-  const p = { 2: 0.25, 3: 0.4, 4: 0.6 }[val('niv')] || 0;
+  // fréquence chargée : chaque avion relevé autour du terrain (OpenSky) ajoute des échanges
+  const p = Math.min(0.85, ({ 2: 0.25, 3: 0.4, 4: 0.6 }[val('niv')] || 0) + Math.min(0.35, near * 0.03));
   if (session || !c.atc || !q.st || Math.random() >= p) return null;
   const others = QUESTIONS.filter(x => x.st === q.st && x.lang === q.lang && x.atc && !x.q && !x.elements && x.cat !== 'nav' && x !== q);
   if (!others.length) return null;
@@ -203,7 +229,131 @@ function chatterFor(q, c) {
   const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
   let v = vary(x, { cs, values: true, memo: { ...memo } });
   if (terrain) v = realTerrain(v, terrain, wx, atisLetter, memo.rw24);
-  return [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
+  const ex = [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
+  return near >= 10 && Math.random() < 0.5 ? [...ex, ...(chatterFor({ ...q, x: 1 }, c) || [])].slice(0, 4) : ex; // très chargée : deux échanges
+}
+// Avions en vol relevés à moins de 30 NM du terrain et sous 3000 m (OpenSky, relevé de moins de 2 h).
+function nearTraffic(t) {
+  if (!t?.pos || !TRAFFIC?.states || Date.now() / 1000 - TRAFFIC.time > 2 * 3600) return 0;
+  const k = Math.cos(t.pos[0] * Math.PI / 180);
+  return TRAFFIC.states.filter(s => !s[8] && s[6] != null && s[7] != null && s[7] < 3000
+    && Math.hypot((s[6] - t.pos[0]) * 60, (s[5] - t.pos[1]) * 60 * k) <= 30).length;
+}
+
+// Détresse en situation sur le terrain réel : message MAYDAY depuis le point d'entrée de la carte VAC, sur la
+// fréquence de la Tour (ordre des éléments : SERA.14095, Manuel p. 238), puis 121,5 MHz (AIP GEN 3.6.5.3 c)).
+function liveEmergency(lang) {
+  const en = lang === 'en', cs = series, P = typeof terrain.entree === 'string' ? terrain.entree : terrain.entree?.[memo.rw24];
+  if (!P) return [];
+  const twr = `${terrain.radio} ${en ? 'Tower' : 'Tour'}`, f = en ? terrain.tour.replace(',', '.') : terrain.tour;
+  const alt = terrain.arrAlt?.[memo.rw24] || terrain.tdp, cap = String(10 * (1 + Math.floor(Math.random() * 36))).padStart(3, '0');
+  const base = { live: true, prepared: true, cat: 'urgence', lang, regle: 'vfr', qcmOnly: true, shown: cs, callsigns: [csKey(cs)], atc: '',
+    st: `${twr} ${f}`, metar: wx?.raw };
+  const vac = `${en ? 'VAC chart' : 'carte VAC'} ${terrain.icao} (SIA, AIRAC 29/10/2026)`;
+  return [
+    { ...base, q: en ? 'Which distress message is correctly built?' : 'Quel message de détresse est correctement construit ?',
+      ctx: en ? `Engine fire at ${alt} feet over point ${P} (${terrain.nom} VAC chart), heading ${cap}. You will make a forced landing.`
+        : `Moteur en feu à ${alt} pieds au point ${P} (carte VAC de ${terrain.nom}), cap ${cap}. Vous allez vous poser en campagne.`,
+      answers: [en ? `MAYDAY MAYDAY MAYDAY, ${twr}, ${cs}, engine fire, forced landing, point ${P}, ${alt} feet, heading ${cap}`
+        : `MAYDAY MAYDAY MAYDAY, ${twr}, ${cs}, feu moteur, atterrissage en campagne, point ${P}, ${alt} pieds, cap ${cap}`],
+      wrong: en ? [`MAYDAY MAYDAY MAYDAY, ${cs}, point ${P}, ${twr}, forced landing, engine fire`,
+        `PAN PAN, PAN PAN, PAN PAN, ${twr}, ${cs}, engine fire, forced landing, point ${P}`, `${twr}, ${cs}, MAYDAY, engine fire`]
+        : [`MAYDAY MAYDAY MAYDAY, ${cs}, point ${P}, ${twr}, atterrissage en campagne, feu moteur`,
+          `PAN PAN, PAN PAN, PAN PAN, ${twr}, ${cs}, feu moteur, atterrissage en campagne, point ${P}`, `${twr}, ${cs}, MAYDAY, feu moteur`],
+      src: `${SERA('SERA.14095')} ; ${MANUEL(238)} ; point et fréquence : ${vac}, ${AIP_AD(terrain.icao)}` },
+    { ...base, q: en ? 'What can you do?' : 'Que pouvez-vous faire ?',
+      ctx: en ? `You transmitted your MAYDAY on ${twr} ${f}: no answer.` : `Vous avez transmis votre MAYDAY sur ${twr} ${f} : aucune réponse.`,
+      answers: [en ? 'Transmit the MAYDAY again on 121.5 MHz' : 'Retransmettre le MAYDAY sur 121,5 MHz'],
+      wrong: en ? ['Wait without transmitting', 'Transmit the MAYDAY again on 123.5 MHz', 'Downgrade to PAN PAN on the same frequency']
+        : ['Attendre sans rien émettre', 'Retransmettre le MAYDAY sur 123,5 MHz', 'Passer en PAN PAN sur la même fréquence'],
+      src: `${AIP('GEN 3.6.5.3 c)')} : message de détresse sur la fréquence en cours, puis éventuellement sur 121,5 MHz` },
+  ];
+}
+
+// Navigation réelle Pau → Tarbes : pistes face au vent des deux METAR, sortie de la CTR de Pau par la procédure de départ
+// Sud de la VAC (piste 13 : vers SA puis SE ; piste 31 : vers SW), SIV Pyrénées, entrée à Tarbes par W (Pontacq),
+// tour de piste main gauche (VAC). Phraséologie du manuel, comme la navigation fictive.
+function liveNav(lang) {
+  const P = TERRAINS.find(t => t.icao === 'LFBP'), T = TERRAINS.find(t => t.icao === 'LFBT'), wp = wxOf('LFBP'), wt = wxOf('LFBT');
+  if (!wp || !wt) return [];
+  const en = lang === 'en', cs = series, fq = f => (en ? f.replace(',', '.') : f), rev = x => [...x].reverse().join('');
+  const rp = bestRunway(P.pistes, wp.wdir, wp.wspd);
+  let rt = bestRunway(T.pistes, wt.wdir, wt.wspd), nuit = '';
+  if (isNight(T.pos) && rt === '02') { rt = '20'; nuit = en ? ' At night, landing on runway 02 is prohibited (VAC).' : ' De nuit, l’atterrissage piste 02 est interdit (VAC).'; }
+  const wind = w => (w.wspd === 0 ? (en ? ', wind calm' : ', vent calme') : typeof w.wdir !== 'number' ? '' // vent variable : non formulé
+    : `, ${en ? 'wind' : 'vent'} ${String(w.wdir || 360).padStart(3, '0')} ${en ? 'degrees' : 'degrés'} ${w.wspd} ${en ? 'knots' : 'nœuds'}${w.gust ? `, ${en ? 'gusting' : 'rafales'} ${w.gust} ${en ? 'knots' : 'nœuds'}` : ''}`);
+  const X = rp === '13' ? 'SE' : 'SW', X2 = X === 'SE' ? 'SW' : 'SE';
+  const letter = atisFromMetar(wt.raw, T, rt, 'fr')?.letter;
+  const eta = String((new Date().getUTCMinutes() + 25) % 60).padStart(2, '0');
+  const sol = `Pau ${en ? 'Ground' : 'Sol'} ${fq(P.sol)}`, twr = `Pau ${en ? 'Tower' : 'Tour'} ${fq(P.tour)}`;
+  const fis = `Pyrénées Information ${fq(P.fis.freq)}`, lt = `Lourdes ${en ? 'Tower' : 'Tour'}`, ltw = `${lt} ${fq(T.tour)}`;
+  const vacP = 'carte VAC LFBP, TXT 02 (procédures de départ)', vacT = 'carte VAC LFBT (points de compte rendu, tour de piste)';
+  const L = en ? [
+    [sol, `Departure from Pau to Tarbes under VFR (real VAC charts, today's weather). At the apron, ATIS received, you requested taxi.`,
+      `${cs}, taxi holding point runway ${rp}.`, `Taxiing holding point runway ${rp}, ${cs}`,
+      [`Roger, ${cs}`, `Taxiing, ${cs}`, `Taxiing holding point runway ${rev(rp)}, ${cs}`], MANUEL(44)],
+    [twr, 'At the holding point, ready for departure.', `${cs}, line up and wait runway ${rp}.`, `Lining up and waiting runway ${rp}, ${cs}`,
+      [`Roger, ${cs}`, `Lining up runway ${rp}, ${cs}`, `Runway ${rp}, taking-off, ${cs}`], MANUEL(53)],
+    [twr, `Lined up runway ${rp}.`, `${cs}, runway ${rp}, cleared for take-off${wind(wp)}.`, `Runway ${rp}, taking-off, ${cs}`,
+      [`Roger, ${cs}`, `Taking-off, ${cs}`, `Runway ${rev(rp)}, taking-off, ${cs}`], MANUEL(59)],
+    [twr, rp === '13' ? 'Southern departure (VAC): at 500 ft AAL, turn right towards SA, climbing to 2000 ft, then SE.'
+      : 'Southern departure (VAC): at 500 ft AAL, turn left towards SW, climbing to 2000 ft.',
+      `${cs}, report ${X}.`, `Reporting ${X}, ${cs}`, [`Roger, ${cs}`, `${X}, ${cs}`, `Reporting ${X2}, ${cs}`], `${MANUEL(149)} ; ${vacP}`],
+    [twr, `Passing ${X}, leaving the Pau control zone towards Tarbes.`, `${cs}, contact Pyrénées Information ${fq(P.fis.freq)}.`,
+      `Pyrénées Information ${fq(P.fis.freq)}, ${cs}`, [`Good day, ${cs}`, `Roger, ${cs}`, `Pyrénées Information ${fq(swapFreq(P.fis.freq))}, ${cs}`], `${MANUEL(15)} ; ${MANUEL(182)}`],
+    [fis, 'Cruising towards Tarbes at 2500 feet; point W (Pontacq) of the Tarbes VAC chart is ahead.', `${cs}, contact ${lt} ${fq(T.tour)}.`,
+      `${lt} ${fq(T.tour)}, ${cs}`, [`Good day, ${cs}`, `Roger, ${cs}`, `${lt} ${fq(swapFreq(T.tour))}, ${cs}`], `${MANUEL(15)} ; ${MANUEL(182)}`],
+    [ltw, `Arriving at Tarbes: DR400, 2500 feet, estimating W at ${eta}${letter ? `, ATIS "${letter}" received` : ''}. Contact established ("${cs}, good morning, pass your message").`, '',
+      `${cs}, DR400, VFR from Pau to Tarbes for landing, 2500 feet, estimate W at ${eta}${letter ? `, information ${letter}` : ''}`,
+      [`${cs}, coming to land at Tarbes`, `${cs}, 2500 feet, DR400${letter ? `, information ${letter}` : ''}`, `${cs}, DR400, VFR from Pau to Tarbes for landing`],
+      `${MANUEL(149)} ; ${vacT}`, 'Which message do you send?'],
+    [ltw, 'You passed your arrival message.', `${cs}, roger, report W.`, `Reporting W, ${cs}`, [`Roger, ${cs}`, `W, ${cs}`, `Reporting downwind, ${cs}`], MANUEL(149)],
+    [ltw, `Passing W ("${lt}, ${cs}, passing W").${nuit}`, `${cs}, join left-hand downwind runway ${rt}, report downwind.`,
+      `Reporting left-hand downwind runway ${rt}, ${cs}`, [`Roger, ${cs}`, `Downwind, ${cs}`, `Reporting right-hand downwind runway ${rt}, ${cs}`], `${MANUEL(149)} ; ${vacT}`],
+    [ltw, `Left-hand downwind runway ${rt}.`, `${cs}, report final runway ${rt}.`, `Reporting final runway ${rt}, ${cs}`,
+      [`Roger, ${cs}`, `Final, ${cs}`, `Reporting base runway ${rt}, ${cs}`], MANUEL(151)],
+    [ltw, `On final runway ${rt}.`, `${cs}, runway ${rt}, cleared to land${wind(wt)}.`, `Runway ${rt}, landing, ${cs}`,
+      [`Roger, ${cs}`, `Landing, ${cs}`, `Runway ${rev(rt)}, landing, ${cs}`], MANUEL(154)],
+    [ltw, 'Runway vacated after landing.', `${cs}, taxi general aviation apron.`, `Taxiing general aviation apron, ${cs}`,
+      [`Roger, ${cs}`, `Apron, ${cs}`, `Taxiing holding point runway ${rt}, ${cs}`], MANUEL(160)],
+  ] : [
+    [sol, 'Départ de Pau vers Tarbes en VFR (cartes VAC réelles, météo du jour). Au parking, ATIS reçue, vous avez demandé le roulage.',
+      `${cs}, roulez point d'attente piste ${rp}.`, `Je roule point d'attente piste ${rp}, ${cs}`,
+      [`Roger, ${cs}`, `Je roule point d'attente, ${cs}`, `Je roule point d'attente piste ${rev(rp)}, ${cs}`], MANUEL(44)],
+    [twr, "Au point d'attente, prêt au départ.", `${cs}, alignez-vous et attendez piste ${rp}.`, `Je m'aligne et attends piste ${rp}, ${cs}`,
+      [`Roger, ${cs}`, `Je m'aligne piste ${rp}, ${cs}`, `Piste ${rp}, je décolle, ${cs}`], MANUEL(53)],
+    [twr, `Aligné piste ${rp}.`, `${cs}, piste ${rp}, autorisé décollage${wind(wp)}.`, `Piste ${rp}, je décolle, ${cs}`,
+      [`Je décolle, ${cs}`, `Roger, ${cs}`, `Piste ${rev(rp)}, je décolle, ${cs}`], MANUEL(59)],
+    [twr, rp === '13' ? 'Départ Sud (VAC) : à 500 ft, virage à droite vers SA en montée vers 2000 ft, puis SE.'
+      : 'Départ Sud (VAC) : à 500 ft, virage à gauche vers SW en montée vers 2000 ft.',
+      `${cs}, rappelez ${X}.`, `Je rappelle ${X}, ${cs}`, [`Roger, ${cs}`, `${X}, ${cs}`, `Je rappelle ${X2}, ${cs}`], `${MANUEL(149)} ; ${vacP}`],
+    [twr, `Vous passez ${X} et quittez la zone de Pau vers Tarbes.`, `${cs}, contactez Pyrénées Information ${P.fis.freq}.`,
+      `Pyrénées Information ${P.fis.freq}, ${cs}`, [`Au revoir, ${cs}`, `Roger, ${cs}`, `Pyrénées Information ${swapFreq(P.fis.freq)}, ${cs}`], `${MANUEL(124)} ; ${MANUEL(182)}`],
+    [fis, 'En croisière vers Tarbes à 2500 pieds ; le point W (Pontacq) de la carte VAC de Tarbes est devant vous.', `${cs}, contactez ${lt} ${T.tour}.`,
+      `${lt} ${T.tour}, ${cs}`, [`Au revoir, ${cs}`, `Roger, ${cs}`, `${lt} ${swapFreq(T.tour)}, ${cs}`], MANUEL(182)],
+    [ltw, `Arrivée à Tarbes : DR400, 2500 pieds, estimé W à ${eta}${letter ? `, ATIS « ${letter} » écoutée` : ''}. Le contact est établi (« ${cs}, bonjour, j’écoute »).`, '',
+      `${cs}, DR400, VFR de Pau à Tarbes pour atterrissage, 2500 pieds, estimé W à ${eta}${letter ? `, information ${letter}` : ''}`,
+      [`${cs}, je viens atterrir à Tarbes`, `${cs}, 2500 pieds, DR400${letter ? `, information ${letter}` : ''}`, `${cs}, DR400, VFR de Pau à Tarbes pour atterrissage`],
+      `${MANUEL(149)} ; ${vacT}`, 'Quel message envoyez-vous ?'],
+    [ltw, 'Vous avez donné votre message d’arrivée.', `${cs}, roger, rappelez W.`, `Je rappelle W, ${cs}`, [`Roger, ${cs}`, `W, ${cs}`, `Je rappelle vent arrière, ${cs}`], MANUEL(149)],
+    [ltw, `Vous passez W (« ${lt}, ${cs}, passe W »).${nuit}`, `${cs}, entrez vent arrière main gauche piste ${rt}, rappelez vent arrière.`,
+      `Je rappelle vent arrière main gauche piste ${rt}, ${cs}`, [`Roger, ${cs}`, `Vent arrière, ${cs}`, `Je rappelle vent arrière main droite piste ${rt}, ${cs}`], `${MANUEL(149)} ; ${vacT}`],
+    [ltw, `Vent arrière main gauche piste ${rt}.`, `${cs}, rappelez finale piste ${rt}.`, `Je rappelle finale piste ${rt}, ${cs}`,
+      [`Roger, ${cs}`, `Finale, ${cs}`, `Je rappelle base piste ${rt}, ${cs}`], MANUEL(151)],
+    [ltw, `En finale piste ${rt}.`, `${cs}, piste ${rt}, autorisé atterrissage${wind(wt)}.`, `Piste ${rt}, j'atterris, ${cs}`,
+      [`J'atterris, ${cs}`, `Roger, ${cs}`, `Piste ${rev(rt)}, j'atterris, ${cs}`], MANUEL(154)],
+    [ltw, 'Piste dégagée après l’atterrissage.', `${cs}, roulez parking aviation générale.`, `Je roule parking aviation générale, ${cs}`,
+      [`Roger, ${cs}`, `Parking, ${cs}`, `Je roule point d'attente piste ${rt}, ${cs}`], MANUEL(160)],
+  ];
+  // météo réelle sous les minima pour décoller ou atterrir en VFR en zone de contrôle (SERA.5005 b) : plafond 1500 ft,
+  // visibilité 5 km) : on le signale au départ
+  const low = [wp, wt].some(w => { const m = parseMetar(w.raw.split(/ (?:TEMPO|BECMG) /)[0]) || {};
+    return (m.vis && m.vis < 5000) || (m.clouds || []).some(c => /BKN|OVC/.test(c.c || '') && c.h < 1500); });
+  if (low) L[0][1] += en ? ' ⚠️ Today the METAR is below the VFR minima of a control zone (ceiling 1,500 ft, visibility 5 km, SERA.5005 b)): for real, this flight would need a special VFR clearance or would not take place.'
+    : ' ⚠️ Aujourd’hui, le METAR est sous les minima VFR d’une zone de contrôle (plafond 1500 ft, visibilité 5 km, SERA.5005 b)) : en vrai, il faudrait un VFR spécial, ou le vol n’aurait pas lieu.';
+  return L.map(([st, ctx, atc, ans, wrong, src, q], i) => ({ live: true, prepared: true, cat: 'nav', nav: i + 1, lang, regle: 'vfr', st, ctx, atc,
+    answers: [ans], wrong, src: `${src} ; ${i < 5 ? AIP_AD('LFBP') : AIP_AD('LFBT')}`, shown: cs, callsigns: [csKey(cs), csKey(abbrev(cs))],
+    metar: (i < 5 ? wp : wt).raw, ...(q ? { q, qcmOnly: true } : {}) }));
 }
 
 // Trafic réel relevé par GitHub toutes les 30 min (traffic.json, OpenSky Network) ; relevé de plus de 2 h : ignoré.
@@ -241,15 +391,16 @@ function liveAtis(lang) {
     [en ? 'What is the information letter?' : 'Quelle est la lettre de l’information ?', a.letter, ch.letter],
     [en ? 'Which runway is in use?' : 'Quelle est la piste en service ?', a.piste, ch.piste],
     [en ? 'What is the QNH?' : 'Quel est le QNH ?', a.qnh, ch.qnh],
+    [en ? 'What is the transition level?' : 'Quel est le niveau de transition ?', a.tl, ch.tl],
   ];
   if (a.wind) qs.push([en ? 'What is the wind?' : 'Quel est le vent ?', a.wind, ch.wind]);
   return qs.sort(() => Math.random() - 0.5).slice(0, 2).map(([q, ans, wrong]) => ({
     live: true, prepared: true, cat: 'atis', lang, regle: 'vfr', who: 'ATIS', shown: series,
     st: `${terrain.radio} ATIS ${en ? terrain.atis.replace(',', '.') : terrain.atis}`,
-    ctx: en ? `ATIS rebuilt from the official ${terrain.nom} METAR (fictitious information letter; no transition level or local instructions). Listen to it before your first call.`
-      : `ATIS reconstitué d’après le METAR officiel de ${terrain.nom} (lettre d’information fictive ; sans niveau de transition ni consignes locales). Écoutez-le avant votre premier appel.`,
+    ctx: en ? `ATIS rebuilt from the official ${terrain.nom} METAR (fictitious information letter; transition level computed from the QNH; no local instructions). Listen to it before your first call.`
+      : `ATIS reconstitué d’après le METAR officiel de ${terrain.nom} (lettre d’information fictive ; niveau de transition calculé avec le QNH ; sans consignes locales). Écoutez-le avant votre premier appel.`,
     atc: a.text, q, answers: [ans], wrong,
-    src: `ATIS reconstitué (pas la diffusion réelle) : METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218`,
+    src: `ATIS reconstitué (pas la diffusion réelle) : METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218 ; niveau de transition : ${AIP('ENR 1.7.2.3')} (au moins 1000 ft au-dessus de l’altitude de transition de 5000 ft), calculé avec le QNH`,
   }));
 }
 
@@ -277,13 +428,15 @@ function next() {
     <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
     <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
     ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? esc(wx.raw) : 'METAR indisponible : vent et QNH de l’exercice.'}
-      <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}</span>
-      ${atsOpen(terrain) ? '' : `<span class="closed">🌙 Hors horaires ATS publiés (${esc(terrain.atsTxt)}) : en réalité, pas de contrôle à cette heure-ci.</span>`}</p>` : ''}
+      <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}${night ? ` · 🌙 nuit aéronautique (jour à ${nightChange(terrain.pos)} UTC)` : ''}${near ? ` · ✈ ${near} avion${near > 1 ? 's' : ''} en vol à moins de 30 NM (OpenSky)` : ''}</span>
+      ${atsOpen(terrain) ? '' : `<span class="closed">🌙 Hors horaires ATS publiés (${esc(terrain.atsTxt)}) : en réalité, pas de contrôle à cette heure-ci.</span>`}</p>`
+    : cur.metar ? `<p class="metar">📡 ${esc(cur.metar)}</p>` : ''}
     <p class="ctx">${esc(cur.ctx)}</p>`;
   if (cur.chatter) h += `<div class="fil" aria-label="${en ? 'Other traffic on frequency' : 'Autres avions sur la fréquence'}">${cur.chatter.map(l =>
     `<div class="bubble ${l.pilot ? 'pilot' : 'atc'} other"><div class="who">${esc(l.who)}</div><p class="msg ${listen ? 'hidden' : ''}" ${listen ? 'aria-hidden="true"' : ''}>${esc(l.text)}</p></div>`).join('')}</div>`;
   if (cur.atc) h += `<div class="bubble atc"><div class="who">${cur.who || 'ATC'}</div>
-    <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>` : esc(cur.atc)}</p>
+    <p class="msg ${listen ? 'hidden' : ''}" id="atc" ${listen ? 'aria-hidden="true"' : ''}>${cur.cut ? `${esc(cur.cut.heard)} <span class="cut">▒▒▒▒ ${en ? '(cut off)' : '(coupé)'}</span>`
+      : cur.blocked ? `${esc(cur.atc.split(' ').slice(0, 2).join(' '))} <span class="cut">▒▒▒▒ ${en ? '(blocked: two stations at once)' : '(brouillé : deux stations à la fois)'}</span>` : esc(cur.atc)}</p>
     <div class="row tight"><button class="ghost" id="hear">🔊 ${listen ? 'Réécouter' : 'Écouter'}</button><span id="vstat" class="muted" role="status"></span>
     ${($('#busy').checked || val('niv') === '4') && !cur.pilote ? `<button class="ghost" id="nm" title="Ce message est pour un autre avion">🚫 ${en ? 'Not for me' : 'Pas pour moi'}</button>` : ''}</div></div>`;
   if (cur.pilote) h += `<div class="bubble pilot"><div class="who">${en ? 'Pilot' : 'Pilote'}</div><p class="msg">${esc(cur.pilote)}</p></div>`;
@@ -364,8 +517,15 @@ function noise(vol, secs, type = 'bandpass', freq = 1400) {
   if (secs) src.stop(c.currentTime + secs);
   return src;
 }
-let rumbleNode = null;
-function stopHiss() { for (const n of [hissNode, rumbleNode]) try { n?.stop(); } catch {} hissNode = rumbleNode = null; }
+let rumbleNode = null, beatNode = null, overSrc = null;
+function stopHiss() { for (const n of [hissNode, rumbleNode, beatNode, overSrc]) try { n?.stop(); } catch {} hissNode = rumbleNode = beatNode = overSrc = null; }
+// Deux émetteurs en même temps : sifflement d'hétérodyne (battement des deux porteuses) et seconde voix par-dessus.
+function blockWith(l, tok, L) {
+  const c = audio(), o = c.createOscillator(), g = c.createGain();
+  o.frequency.value = 500 + Math.random() * 1200; g.gain.value = 0.05;
+  o.connect(g).connect(c.destination); o.start(); beatNode = o;
+  if ($('#neural').checked) lineAudio(l.over).then(b => { if (tok === sayTok) overSrc = playRadio(b, L, null, 0.95); }).catch(() => {});
+}
 
 // ── Voix réaliste : synthèse neuronale Piper (calcul dans tts-worker.js, sans figer la page) passée dans un
 // filtre radio VHF. Chaque voix est téléchargée une fois (≈ 60 Mo) puis gardée par le navigateur.
@@ -410,7 +570,8 @@ function neuralAudio(text, voiceId) {
 const lineAudio = l => neuralAudio(speakable(l.text, l.lang), neuralVoice(l.lang, l.st, l.pilot && l.cs));
 function cardLines(text) {
   const main = text ?? (cur.cut ? cur.cut.heard : cur.atc);
-  const lines = [...(cur.chatter && !cur.chatterDone ? cur.chatter : []), { text: main, lang: cur.lang, st: cur.st, cut: !!cur.cut && main === cur.cut.heard }];
+  const lines = [...(cur.chatter && !cur.chatterDone ? cur.chatter : []), { text: main, lang: cur.lang, st: cur.st, cut: !!cur.cut && main === cur.cut.heard,
+    over: text == null && cur.blocked ? cur.blocked : null }];
   if (text == null && cur.pilote) lines.push({ text: cur.pilote, lang: cur.lang, st: cur.st, pilot: true, cs: cur.shown }); // pilote fautif : on l'entend collationner
   return lines;
 }
@@ -446,11 +607,14 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
 // Une transmission radio : { text, lang, st, pilot, cs, cut }. Un pilote émet avec plus de souffle et le bruit du moteur.
 function transmit(l, tok, L) {
   return new Promise(resolve => {
-    const hissV = (l.pilot ? L.hiss * 1.5 + 0.006 : L.hiss) * (l.far ? 2 : 1);
+    // émetteurs d'approche et d'information de vol éloignés du terrain : réception plus bruitée que la Tour ou le Sol
+    const remote = !l.pilot && /Approche|Approach|Information|Info |Contrôle|Control/.test(l.st || '');
+    const hissV = (l.pilot ? L.hiss * 1.5 + 0.006 : L.hiss) * (l.far ? 2 : 1) * (remote ? 1.6 : 1);
     const tx = () => {
       if (tok !== sayTok) return;
       vstat(''); $('#led')?.classList.add('tx'); noise(hissV * 6, 0.08); hissNode = noise(hissV); // alternat + souffle porteuse
       if (l.pilot) rumbleNode = noise(0.06, 0, 'lowpass', 170);
+      if (l.over) blockWith(l, tok, L);
     };
     const rx = () => {
       if (tok !== sayTok) return resolve();
@@ -584,7 +748,7 @@ function showMyVoice() {
   if (!row || !myAudio || $('#myVoice')) return;
   row.insertAdjacentHTML('afterbegin', '<button id="myVoice">▶️ Ma réponse</button><button id="atcVoice">🔊 Le contrôleur</button>');
   $('#myVoice').addEventListener('click', () => { hush(); new Audio(myAudio).play(); });
-  $('#atcVoice').addEventListener('click', () => say(cur.cut ? cur.full.atc : cur.atc));
+  $('#atcVoice').addEventListener('click', () => say(cur.cut || cur.blocked ? cur.full.atc : cur.atc));
 }
 
 function grade(text) {
@@ -609,7 +773,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
   answered = true;
   const counted = !cur.retry;
   if (counted) {
-    if (!cur.notMine && !cur.cut && !cur.dictee && !cur.pilote && !cur.live) record(good); // ces cartes ne touchent pas la révision
+    if (!cur.notMine && !cur.cut && !cur.blocked && !cur.dictee && !cur.pilote && !cur.live) record(good); // ces cartes ne touchent pas la révision
     total++; if (good) { ok++; streak++; } else streak = 0;
     extra.best = Math.max(extra.best || 0, streak);
     if (!good && !cur.pilote) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
@@ -643,7 +807,7 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
       ${fiche ? `<button class="ghost" data-fiche="${fiche.id}">📚 Fiche : ${esc(fiche.titre)}</button>` : ''}</details>
     <div class="row">
     <button class="primary" id="nx">Suivant →</button></div></div>`;
-  if (cur.cut) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
+  if (cur.cut || cur.blocked) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
   showMyVoice();
   $('#fb [data-fiche]')?.addEventListener('click', e => openFiche(e.target.dataset.fiche));
   $('#nx').addEventListener('click', next);

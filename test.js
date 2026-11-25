@@ -140,9 +140,9 @@ console.log(ntr, 'QCM piégeux OK');
 // ── ATIS réel construit depuis le METAR ──
 { const t = { radio: 'Pau', icao: 'LFBP' };
   const a = R.atisFromMetar('METAR LFBP 191000Z AUTO 24010KT 200V270 9999 FEW064 16/05 Q1009 NOSIG', t, '31', 'fr');
-  assert.strictEqual(a.text, "Bonjour, ici Pau information Yankee, enregistrée à 1000 UTC. Piste en service 31. Vent 240 degrés 10 nœuds. Visibilité 10 kilomètres. Nuages peu 6400 pieds. Température 16, point de rosée 5. QNH 1009. Tendance NOSIG. Informez Pau dès le premier contact que vous avez reçu l'information Yankee.");
+  assert.strictEqual(a.text, "Bonjour, ici Pau information Yankee, enregistrée à 1000 UTC. Piste en service 31. Niveau de transition 70. Vent 240 degrés 10 nœuds. Visibilité 10 kilomètres. Nuages peu 6400 pieds. Température 16, point de rosée 5. QNH 1009. Tendance NOSIG. Informez Pau dès le premier contact que vous avez reçu l'information Yankee.");
   assert.strictEqual(R.atisFromMetar('METAR LFBP 191800Z 00000KT CAVOK M02/M05 Q0998 TEMPO 4000 RA', t, '13', 'en').text,
-    'Good evening, this is Pau information Golf, recorded at 1800 UTC. Runway in use 13. Wind calm. CAVOK. Temperature minus 2, dew point minus 05. QNH 998. Inform Pau on initial contact you have received information Golf.');
+    'Good evening, this is Pau information Golf, recorded at 1800 UTC. Runway in use 13. Transition level 70. Wind calm. CAVOK. Temperature minus 2, dew point minus 05. QNH 998. Inform Pau on initial contact you have received information Golf.');
   assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z VRB03KT 9999 FEW030 12/05 Q1010', t, '31', 'fr'), null, 'vent variable : pas de formulation');
   assert.strictEqual(R.atisFromMetar('METAR LFBP 191000Z 24010KT 0400 R13/0550N FG VV002 05/05 Q1020', t, '31', 'fr'), null, 'RVR : pas d’ATIS');
   console.log('ATIS réel OK'); }
@@ -181,7 +181,7 @@ console.log('choix ATIS OK');
   console.log('terrain réel (fréquences, Sol, ATIS, premier appel) OK'); }
 
 assert.strictEqual(R.atisFromMetar('METAR LFBP 191930Z AUTO 27008KT 9999 BKN068/// BKN094/// ///TCU 12/08 Q1013 TEMPO 26015G25KT', { radio: 'Pau' }, '31', 'fr').text,
-  "Bonsoir, ici Pau information Hotel, enregistrée à 1930 UTC. Piste en service 31. Vent 270 degrés 8 nœuds. Visibilité 10 kilomètres. Nuages fragmenté 6800 pieds, fragmenté 9400 pieds, cumulonimbus bourgeonnant. Température 12, point de rosée 8. QNH 1013. Informez Pau dès le premier contact que vous avez reçu l'information Hotel.");
+  "Bonsoir, ici Pau information Hotel, enregistrée à 1930 UTC. Piste en service 31. Niveau de transition 60. Vent 270 degrés 8 nœuds. Visibilité 10 kilomètres. Nuages fragmenté 6800 pieds, fragmenté 9400 pieds, cumulonimbus bourgeonnant. Température 12, point de rosée 8. QNH 1013. Informez Pau dès le premier contact que vous avez reçu l'information Hotel.");
 console.log('ATIS station automatique OK');
 
 // ── Cartes VAC et AIP : sens du tour de piste, point d'entrée, approche / information, horaires, rafales ──
@@ -225,3 +225,29 @@ console.log('ATIS station automatique OK');
   const tr = QUESTIONS.find(q => q.cat === 'trafic' && q.lang === 'fr' && q.atc);
   ['Je surveille, F-GBCD', 'Roger, je regarde, F-GBCD'].forEach(a => assert(check(a, tr.answers).pass));
   console.log('trafic réel OK'); }
+
+// ── Lot 4 : niveau de transition, nuit, approches publiées, nouveaux terrains, prononciation ──
+{ assert.deepStrictEqual([1030, 1013, 1012, 990].map(q => R.transitionLevel(q)), [60, 60, 70, 70]);
+  assert(Math.abs(R.sunElevation(43.38, -0.42, new Date(Date.UTC(2026, 5, 21, 12))) - 70) < 1, 'midi solaire au solstice à Pau');
+  assert(R.isNight([43.38, -0.42], new Date('2026-11-25T22:00Z')) && !R.isNight([43.38, -0.42], new Date('2026-11-25T12:00Z')));
+  assert(!R.isNight([43.38, -0.42], new Date('2026-11-25T16:50Z')), 'crépuscule civil : pas encore la nuit juste après le coucher');
+  const T = icao => TERRAINS.find(t => t.icao === icao);
+  const ils = QUESTIONS.find(q => q.atc === 'F-GBCD, autorisé approche ILS piste 32.');
+  const p31 = R.realTerrain(R.vary(ils, { cs: 'F-GXYZ', memo: { rw32: '31' } }), T('LFBP'), null, null, '31');
+  assert.strictEqual(p31.atc, 'F-GXYZ, autorisé approche ILS piste 31.'); assert(/LOC PYR 110,1/.test(p31.ctx), p31.ctx);
+  const n03 = R.realTerrain(R.vary(ils, { cs: 'F-GXYZ', memo: { rw32: '03' } }), T('LFRS'), null, null, '03');
+  assert.strictEqual(n03.answers[0], 'Autorisé approche ILS Z piste 03, F-GXYZ');
+  const a11 = R.realTerrain(R.vary(ils, { cs: 'F-GXYZ', memo: { rw32: '11' } }), T('LFBA'), null, null, '11');
+  assert(a11.noAppr, 'Agen 11 : aucune approche publiée');
+  const en = QUESTIONS.find(q => q.atc === 'F-GBCD, cleared ILS approach runway 32.');
+  assert.strictEqual(R.realTerrain(R.vary(en, { cs: 'F-GXYZ', memo: { rw32: '29' } }), T('LFBA'), null, null, '29').atc, 'F-GXYZ, cleared RNP approach runway 29.');
+  const tl = R.realTerrain(QUESTIONS.find(q => /niveau de transition 60/.test(q.atc)), T('LFBD'), { wdir: 240, wspd: 5, qnh: 1005 });
+  assert(/niveau de transition 70/.test(tl.atc), tl.atc);
+  const sol = QUESTIONS.find(q => q.st === 'Sol 121,800' && q.lang === 'fr');
+  assert.strictEqual(R.realTerrain(sol, T('LFBA')).st, 'Agen Tour 121,305', 'Agen : pas de Sol publié');
+  assert.strictEqual(R.realTerrain(sol, T('LFBD')).st, 'Mérignac Sol 121,905');
+  assert(R.atsOpen(T('LFBA'), new Date('2026-11-25T10:00Z')) && !R.atsOpen(T('LFBA'), new Date('2026-11-28T11:30Z')), 'Agen : coupure du samedi midi');
+  assert(R.atsOpen(T('LFMP'), new Date('2026-11-28T19:00Z')) && !R.atsOpen(T('LFMP'), new Date('2026-11-28T20:00Z')), 'Perpignan : samedi 1930');
+  for (const t of TERRAINS) for (const r of Object.keys(t.appr || {})) assert(t.pistes.includes(r), `${t.icao} ${r}`);
+  assert.strictEqual(speakable("traffic 11 o'clock, 4 miles", 'en'), "traffic eleven o'clock, four miles");
+  console.log('niveau de transition, nuit, approches publiées, nouveaux terrains OK'); }

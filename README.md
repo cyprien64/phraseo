@@ -50,6 +50,24 @@ Réalisme :
   2 nautiques, même sens, 1700 pieds plus haut »), sur le modèle du manuel (p. 89-92). OpenSky ne donne pas le type
   d'avion : il est remplacé par « rapide » ou « lent » selon la vitesse. Positions vieilles de 30 minutes au plus ;
   relevé de plus de 2 heures : ignoré ; aucun avion à proximité : pas d'exercice.
+- **🧭 Navigation réelle Pau → Tarbes** (sujet dédié) : pistes face au vent des deux METAR, départ Sud de la VAC de Pau
+  (piste 13 : SA puis SE ; piste 31 : SW), Pyrénées Information 126,530, Lourdes Tour 119,055, entrée par W (Pontacq),
+  tour de piste main gauche ; de nuit, pas d'atterrissage piste 02 (VAC). Si le METAR est sous les minima VFR d'une zone
+  de contrôle (SERA.5005 b)), le premier message le signale.
+- **📏 Niveau de transition** : ajouté à l'ATIS reconstitué et aux messages, calculé avec le QNH réel (plus bas niveau
+  de vol à au moins 1000 ft au-dessus de l'altitude de transition de 5000 ft, AIP ENR 1.7.2.3 et cartes IAC ; environ
+  28 ft par hPa). Le vrai niveau est donné par le contrôle.
+- **🛬 Approches IFR publiées** : « approche ILS » devient l'approche réellement publiée pour la piste en service (titre des
+  cartes IAC, AD 2.24 : ILS Z 27 à Biarritz, ILS 31 à Pau, RNP 29 à Agen…), avec le LOC de l'AD 2.19 ; pas d'approche
+  publiée pour cette piste (Pau 13, Agen 11…) : exercice d'approche écarté.
+- **🌙 Nuit aéronautique** : hauteur du soleil calculée au terrain ; sous −6° (fin du crépuscule civil, définition SERA),
+  le bandeau l'indique et la série commence par des questions de VFR de nuit (SERA.5005 c)).
+- **🆘 Détresse en situation** : MAYDAY depuis le vrai point d'entrée de la VAC sur la fréquence de la Tour, puis
+  121,5 MHz si personne ne répond (AIP GEN 3.6.5.3 c)).
+- **📻 Fréquence chargée** : plus il y a d'avions relevés à moins de 30 NM, plus on entend d'autres échanges.
+  **Transmissions simultanées** (niveau Confirmé et au-dessus) : sifflement d'hétérodyne, message brouillé, on répond
+  « Répétez » (SERA tableau S14-4 ; Manuel p. 24). Les émetteurs d'Approche et d'Information sont plus bruités que la
+  Tour. En anglais, le gisement horaire se prononce « eleven o'clock » (Manuel p. 13).
 - **Contrôleur** : à l'écrit et à l'oral, un collationnement faux reçoit tout de suite « Négatif je répète » et la clairance
   (SERA.14075 d)), la correction détaillée vient après le 2e essai ; en Expert et Expert+, sans réponse au bout de
   10 secondes, le contrôleur vous appelle (« F-CD, Pau Tour », SERA.14055 b)).
@@ -74,7 +92,8 @@ Réalisme :
   la clairance et on peut réessayer (essai non compté).
 - **Premier appel libre** : on rédige soi-même la demande ; le site vérifie la présence et l'ordre des éléments
   du modèle du manuel (p. 45 et 149).
-- **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes) : nom radio, pistes et fréquences Tour / Sol de l'AIP
+- **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes, Bordeaux, Perpignan, Agen ; Toulouse et Montpellier non
+  proposés : pistes parallèles) : nom radio, pistes et fréquences Tour / Sol de l'AIP
   (AD 2, AIRAC du 29/10/2026) ; **météo réelle** : le dernier METAR est affiché, la piste est choisie face au vent, et le
   vent et le QNH des messages sont ceux du METAR (vent variable : vent de l'exercice ; METAR de plus de 3 h : ignoré).
   Les METAR viennent d'aviationweather.gov (NOAA), récupérés par GitHub toutes les 30 minutes (`.github/workflows/pages.yml`).

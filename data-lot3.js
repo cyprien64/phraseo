@@ -6,6 +6,7 @@
 // aviationweather.gov (NOAA) dans metar.json (voir .github/workflows/pages.yml).
 const AIP_AD = icao => `AIP France, AD 2 ${icao} (AIRAC 29/10/2026)`;
 SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
+SUJETS.navreel = 'Navigation réelle Pau → Tarbes (cartes VAC, météo du jour)';
 
 // Indicatif radio = nom utilisé dans l'AIP (Tarbes : « Lourdes Tour »).
 // Pistes préférentielles (AD 2.20 / 2.21) : seule Nantes en publie une chiffrée. Biarritz demande la piste 09 au
@@ -17,26 +18,54 @@ SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
 // utilisé pour les arrivées (Pau : selon la piste, procédure VAC) ; `arrAlt` : altitude de présentation (Pau, VAC) ;
 // `app` / `fis` : approche et information de vol de l'AD 2.18 (absentes de l'AIP de Tarbes et de Lyon-Bron : fictives) ;
 // `ats` : horaires ATS en UTC hiver ([début, fin] en HHMM ; par jour 0 = dimanche si `atsJours`), null = H24.
+// `pos` : ARP (AD 2.2), pour la nuit aéronautique. `appr` : approche aux instruments publiée pour chaque piste
+// (titre de la carte IAC en AD 2.24 ; [nom, indicatif et fréquence du LOC de l'AD 2.19] pour un ILS). Piste sans
+// approche publiée : pas d'exercice d'approche ILS sur ce terrain. Altitude de transition : 5000 ft partout (cartes IAC).
+// Ajout de Bordeaux, Perpignan et Agen (AIRAC 29/10/2026). Toulouse-Blagnac et Montpellier ne sont pas proposés :
+// leurs pistes parallèles (14L/14R, 12L/12R) ne passent pas dans les exercices, écrits pour une piste à deux chiffres.
 const TERRAINS = [
   { icao: 'LFBP', nom: 'Pau-Pyrénées', radio: 'Pau', pistes: ['13', '31'], tour: '124,155', sol: '121,755', atis: '128,480',
     app: { nom: 'Pyrénées', freq: '128,805' }, fis: { nom: 'Pyrénées', freq: '126,530' },
     circuit: { 13: 'gauche', 31: 'droite' }, tdp: 1600, entree: { 13: 'N', 31: 'NE' }, arrAlt: { 13: 1600, 31: 2500 },
-    ats: null, atsTxt: 'H24' },
+    ats: null, atsTxt: 'H24', pos: [43.38, -0.4186], appr: { 31: ['ILS', 'PYR', '110,1'] } },
   { icao: 'LFBZ', nom: 'Biarritz-Pays basque', radio: 'Biarritz', pistes: ['09', '27'], tour: '118,705', sol: '121,955', atis: '128,230',
     app: { nom: 'Biarritz', freq: '125,605' }, fis: { nom: 'Biarritz', freq: '119,180' },
     circuit: { '09': 'droite', 27: 'gauche' }, tdp: 1200, entree: 'E',
-    ats: [[515, 2200]], atsTxt: '0515-2200 UTC en hiver, une heure plus tôt en été' },
+    ats: [[515, 2200]], atsTxt: '0515-2200 UTC en hiver, une heure plus tôt en été',
+    pos: [43.4683, -1.5311], appr: { 27: ['ILS Z', 'BZ', '111,35'], '09': ['RNP'] } },
   { icao: 'LFBT', nom: 'Tarbes-Lourdes-Pyrénées', radio: 'Lourdes', pistes: ['02', '20'], tour: '119,055', sol: '121,805', atis: '125,955',
     circuit: { '02': 'gauche', 20: 'gauche' }, tdp: 2300, entree: 'E',
-    ats: [[400, 2230], [2330, 200]], atsTxt: '0400-2230 et 2330-0200 UTC en hiver, une heure plus tôt en été' },
+    ats: [[400, 2230], [2330, 200]], atsTxt: '0400-2230 et 2330-0200 UTC en hiver, une heure plus tôt en été',
+    pos: [43.1856, -0.0028], appr: { 20: ['ILS', 'OS', '109,5'] } },
   { icao: 'LFLY', nom: 'Lyon-Bron', radio: 'Bron', pistes: ['16', '34'], tour: '118,105', sol: '121,705', atis: '128,130',
     circuit: { 16: 'gauche', 34: 'droite' }, tdp: 1500, entree: 'MS',
     ats: [[[700, 2000]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[700, 2130]]], atsJours: true,
-    atsTxt: 'lun-ven 0530-2130, sam 0700-2130, dim et fériés 0700-2000 UTC en hiver, une heure plus tôt en été' },
+    atsTxt: 'lun-ven 0530-2130, sam 0700-2130, dim et fériés 0700-2000 UTC en hiver, une heure plus tôt en été',
+    pos: [45.7294, 4.9389], appr: { 16: ['RNP'], 34: ['RNP'] } },
   { icao: 'LFRS', nom: 'Nantes-Atlantique', radio: 'Nantes', pistes: ['03', '21'], tour: '118,655', sol: '121,655', atis: '126,930',
     pref: { piste: '03', tail: 5 }, // AD 2 LFRS.21 § 21.3.2 : « RWY 03 préférentiel jusqu'à 5 kt de vent arrière »
     app: { nom: 'Nantes', freq: '119,400' }, fis: { nom: 'Nantes', freq: '122,800' },
-    circuit: { '03': 'gauche', 21: 'droite' }, tdp: 1100, entree: 'E', ats: null, atsTxt: 'H24' },
+    circuit: { '03': 'gauche', 21: 'droite' }, tdp: 1100, entree: 'E', ats: null, atsTxt: 'H24',
+    pos: [47.1569, -1.6078], appr: { '03': ['ILS Z', 'NT', '109,9'], 21: ['RNP Z'] } },
+  // Bordeaux : deux pistes sécantes ; la VAC ne dessine pas de tour de piste (intégration directe en finale) : sens de
+  // circuit des exercices inchangé. Points d'entrée N, NE, NW, S, SE, SW (S : point de sortie par défaut vers le sud).
+  { icao: 'LFBD', nom: 'Bordeaux-Mérignac', radio: 'Mérignac', pistes: ['23', '05', '29', '11'], tour: '118,305', sol: '121,905', atis: '131,155',
+    app: { nom: 'Aquitaine', freq: '119,275' }, fis: { nom: 'Aquitaine', freq: '120,575' }, tdp: 1200, entree: 'S', ats: null, atsTxt: 'H24',
+    pos: [44.8286, -0.7153], appr: { 23: ['ILS', 'BD', '110,3'], 29: ['ILS', 'BEI', '111,15'], '05': ['RNP Z'], 11: ['RNP'] } },
+  // Perpignan : tour de piste à l'ouest de la piste 15/33 (la 13/31 n'est donnée qu'en fin de vent arrière, VAC TXT 01) ;
+  // approche Montpellier (VAC) ; pas de SIV dans l'AD 2.18.
+  { icao: 'LFMP', nom: 'Perpignan-Rivesaltes', radio: 'Perpignan', pistes: ['33', '15'], tour: '118,300', sol: '121,780', atis: '127,880',
+    app: { nom: 'Montpellier', freq: '130,855' }, circuit: { 15: 'droite', 33: 'gauche' }, tdp: 1200, entree: 'EA',
+    ats: [[[700, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 2130]], [[530, 1930]]], atsJours: true,
+    atsTxt: 'lun-ven 0530-2130, sam 0530-1930, dim 0700-2130 UTC en hiver, une heure plus tôt en été',
+    pos: [42.7408, 2.8697], appr: { 33: ['ILS', 'PL', '111,75'], 15: ['RNP'] } },
+  // Agen : pas de Sol (roulage avec la Tour) ; « QFU 291° préférentiel cause procédure IFR » sans seuil de vent (VAC TXT 01) :
+  // non appliqué ; la VAC ne dessine pas de tour de piste ; approche Toulouse au-dessus de 2000 ft (VAC).
+  { icao: 'LFBA', nom: 'Agen-La Garenne', radio: 'Agen', pistes: ['29', '11'], tour: '121,305', atis: '129,605',
+    app: { nom: 'Toulouse', freq: '120,355' }, tdp: 1200, entree: 'SA',
+    ats: [[[800, 1100], [1215, 1700]], [[700, 1700]], [[700, 1700]], [[700, 1700]], [[700, 1700]], [[700, 1700]], [[800, 1100], [1215, 1700]]], atsJours: true,
+    atsTxt: 'lun-ven 0700-1700, sam-dim et fériés 0800-1100 et 1215-1700 UTC en hiver, une heure plus tôt en été',
+    pos: [44.1747, 0.5906], appr: { 29: ['RNP'] } },
 ];
 
 // Navigation VFR complète : messages enchaînés dans l'ordre (champ `nav`), même indicatif et mêmes valeurs.
@@ -160,3 +189,40 @@ QUESTIONS.push(...NAV.map(([lang, st, ctx, atc, ans, wrong, src, q]) => ({
   cat: 'nav', nav: ++navCount[lang], dest: /1[12]0[,.]100/.test(st), lang, regle: 'vfr', st, ctx, atc,
   ...(q ? { q, qcmOnly: true } : {}), answers: [ans], wrong, src,
 })));
+
+// Vol de nuit. Nuit aéronautique : de la fin du crépuscule civil du soir au début du crépuscule civil du matin (soleil
+// à 6° sous l'horizon) ; conditions du VFR de nuit : SERA.5005 c). Avec un terrain réel, ces questions sont proposées en
+// tête de série quand il fait nuit au terrain (calcul de la hauteur du soleil, realism.js).
+SUJETS.nuit = 'Vol de nuit (VFR de nuit)';
+const VAC_TXT = (icao, p) => `Carte VAC ${icao}, AD 2 ${icao} ${p} (SIA, AIRAC 29/10/2026)`;
+QUESTIONS.push(
+  { cat: 'nuit', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'Le soleil vient de passer sous l’horizon.',
+    q: 'Quand commence la nuit aéronautique ?', answers: ['À la fin du crépuscule civil : centre du soleil à 6° sous l’horizon'],
+    wrong: ['Au coucher du soleil', 'À 20 heures locales', 'Quand le soleil est à 12° sous l’horizon'], src: SERA('article 2, définition de « nuit »') },
+  { cat: 'nuit', lang: 'en', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'The sun has just set.',
+    q: 'When does night begin?', answers: ['At the end of evening civil twilight: centre of the sun 6° below the horizon'],
+    wrong: ['At sunset', 'At 8 pm local time', 'When the sun is 12° below the horizon'], src: SERA('article 2, définition de « nuit »') },
+  { cat: 'nuit', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'Il fait nuit. Vous allez quitter les abords de l’aérodrome en VFR de nuit.',
+    q: 'Que devez-vous avoir fait avant le départ ?', answers: ['Déposé un plan de vol'],
+    wrong: ['Rien de particulier en VFR', 'Prévenu la Tour par téléphone', 'Affiché 7000 au transpondeur'], src: SERA('SERA.5005 c) 1)') },
+  { cat: 'nuit', lang: 'en', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'It is night. You are going to leave the vicinity of the aerodrome under night VFR.',
+    q: 'What must you have done before departure?', answers: ['Submitted a flight plan'],
+    wrong: ['Nothing special under VFR', 'Phoned the Tower', 'Selected squawk 7000'], src: SERA('SERA.5005 c) 1)') },
+  { cat: 'nuit', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'Préparation d’un vol VFR de nuit.',
+    q: 'Quel plafond minimal faut-il en VFR de nuit ?', answers: ['450 m (1 500 ft)'],
+    wrong: ['300 m (1 000 ft)', '600 m (2 000 ft)', 'Aucun : seule la visibilité compte'], src: SERA('SERA.5005 c) 3) i)') },
+  { cat: 'nuit', lang: 'en', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'Planning a night VFR flight.',
+    q: 'What is the minimum ceiling for night VFR?', answers: ['450 m (1,500 ft)'],
+    wrong: ['300 m (1,000 ft)', '600 m (2,000 ft)', 'None: only visibility matters'], src: SERA('SERA.5005 c) 3) i)') },
+  { cat: 'nuit', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'VFR de nuit en croisière, hors région montagneuse, sans altitude minimale fixée par l’État.',
+    q: 'À quelle hauteur minimale volez-vous ?', answers: ['300 m (1 000 ft) au-dessus de l’obstacle le plus élevé dans un rayon de 8 km'],
+    wrong: ['150 m (500 ft) au-dessus du sol', '600 m (2 000 ft) au-dessus de l’obstacle le plus élevé dans un rayon de 8 km', '300 m (1 000 ft) au-dessus du sol sous l’avion'],
+    src: SERA('SERA.5005 c) 5) ii)') },
+  { cat: 'nuit', lang: 'en', regle: 'vfr', qcmOnly: true, atc: '', ctx: 'Night VFR cruise, not over high terrain, no minimum altitude set by the State.',
+    q: 'What is your minimum height?', answers: ['300 m (1,000 ft) above the highest obstacle within 8 km'],
+    wrong: ['150 m (500 ft) above the ground', '600 m (2,000 ft) above the highest obstacle within 8 km', '300 m (1,000 ft) above the ground below the aircraft'],
+    src: SERA('SERA.5005 c) 5) ii)') },
+  { cat: 'nuit', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', terrain: 'LFBT', ctx: 'Tarbes-Lourdes-Pyrénées, de nuit (VAC, « VFR de nuit »).',
+    q: 'Qu’interdit la carte VAC de Tarbes de nuit (sauf pilotes et organismes cités) ?', answers: ['L’atterrissage piste 02 et le décollage piste 20'],
+    wrong: ['Tout atterrissage', 'Le décollage piste 02 et l’atterrissage piste 20', 'Le tour de piste main gauche'], src: VAC_TXT('LFBT', 'TXT 01') },
+);
