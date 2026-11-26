@@ -25,7 +25,8 @@ SUJETS.nav = 'Navigation VFR complète (départ, SIV, transit, arrivée)';
 const TERRAINS = [
   { icao: 'LFBP', nom: 'Pau-Pyrénées', radio: 'Pau', pistes: ['13', '31'], tour: '124,155', sol: '121,755', atis: '128,480',
     app: { nom: 'Pyrénées', freq: '128,805' }, fis: { nom: 'Pyrénées', freq: '126,530' },
-    circuit: { 13: 'gauche', 31: 'droite' }, tdp: 1600, entree: { 13: 'N', 31: 'NE' }, arrAlt: { 13: 1600, 31: 2500 },
+    circuit: { 13: 'gauche', 31: 'droite' }, tdp: 1600, // VAC TXT 02 : arrivées du nord (13 : N à 1600 ft ; 31 : NE à 2500 ft) et du sud (13 : SW ; 31 : S ou SE, à 2500 ft)
+    entree: { 13: { N: 'N', S: 'SW' }, 31: { N: 'NE', S: 'S' } }, arrAlt: { 13: { N: 1600, S: 2500 }, 31: 2500 },
     ats: null, atsTxt: 'H24', pos: [43.38, -0.4186], appr: { 31: ['ILS', 'PYR', '110,1'] } },
   { icao: 'LFBZ', nom: 'Biarritz-Pays basque', radio: 'Biarritz', pistes: ['09', '27'], tour: '118,705', sol: '121,955', atis: '128,230',
     app: { nom: 'Biarritz', freq: '125,605' }, fis: { nom: 'Biarritz', freq: '119,180' },

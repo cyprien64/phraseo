@@ -119,7 +119,7 @@ const ATIS_WORD = /\b(information |ATIS « |ATIS ")(Alfa|Bravo|Charlie|Delta|Ech
 // Fréquence aux deux premières décimales inversées : la mauvaise réponse du QCM qui remplace la fausse fréquence.
 const swapFreq = f => { const [mhz, dec] = f.split(','), i = dec[0] !== dec[1] ? 0 : 1; return `${mhz},${dec.slice(0, i)}${dec[i + 1]}${dec[i]}${dec.slice(i + 2)}`; };
 const SIDE = { gauche: 'droite', droite: 'gauche', left: 'right', right: 'left' };
-function realTerrain(q, t, wx, letter, rwy, pick = 0) {
+function realTerrain(q, t, wx, letter, rwy, pick = 0, from = 'N') {
   if (!t || /^(afis|atis)$/.test(q.cat || '')) return q;
   const en = q.lang === 'en', fq = f => (en ? f.replace(',', '.') : f);
   const full = d => t.pistes.find(p => rwNum(p) === +d) || d; // « 32 » → « 32R » sur un terrain à pistes parallèles
@@ -134,14 +134,16 @@ function realTerrain(q, t, wx, letter, rwy, pick = 0) {
   };
   // carte VAC : point d'entrée réel à la place du point fictif « E », altitude de présentation (Pau), et sens réel du
   // tour de piste (les mauvaises réponses gardent le sens opposé)
-  const entree = !q.dest && t.entree && (typeof t.entree === 'string' ? t.entree : t.entree[rwy]);
-  const alt = !q.dest && t.arrAlt?.[rwy];
+  const [entree, alt] = q.dest ? [] : entryPoint(t, rwy, from);
   const arrivee = /\b(?:point|estimé|estimate) E\b/.test(`${q.ctx} ${q.answers[0]}`);
   const vac = s => {
     if (entree) s = s.replace(/\b(point|estimé|estimate|rappelez|report|rappelle|Reporting|passe|passing) E\b(?! N)/g, `$1 ${entree}`);
     if (alt && arrivee) s = s.replace(/\b1500 (pieds|feet)\b/g, `${alt} $1`);
     return s;
   };
+  // point d'entrée choisi selon la provenance (Pau : arrivée du nord ou du sud, VAC) : on le précise dans le contexte
+  const prov = arrivee && entree && typeof t.entree?.[rwy] === 'object' && !Array.isArray(t.entree[rwy])
+    ? (en ? ` (arriving from the ${from === 'S' ? 'south' : 'north'}, VAC procedure)` : ` (arrivée du ${from === 'S' ? 'sud' : 'nord'}, procédure de la VAC)`) : '';
   const rw = (`${q.atc} ${q.answers[0]}`.match(/\b(?:piste|runway) (\d\d)\b/) || [])[1];
   const side0 = (`${q.atc} ${q.answers[0]}`.match(/\bmain (droite|gauche)\b|\b(right|left)-hand\b/) || []).slice(1).find(Boolean);
   const want = !q.dest && rw && t.circuit?.[full(rw)];
@@ -185,7 +187,7 @@ function realTerrain(q, t, wx, letter, rwy, pick = 0) {
     .replace(/^(Sol|Ground) 121[,.]800$/, (_, x) => (t.sol ? `${t.radio} ${x} ${fq(t.sol)}` : `${t.radio} ${twr} ${fq(t.tour)}`))
     .replace(/^(Approche|Approach) 120[,.]850$/, (m, x) => (t.app ? `${t.app.nom} ${x} ${fq(t.app.freq)}` : m))
     .replace(/^Info(?:rmation)? 125[,.]700$/, m => (fis ? fis + fq(t.fis.freq) : m));
-  const out = { ...q, st, ctx: f(q.ctx || ''), atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
+  const out = { ...q, st, ctx: f(q.ctx || '') + prov, atc: f(q.atc), answers: q.answers.map(f), wrong: q.wrong.map(f) };
   if (ils.test(`${q.ctx} ${q.atc} ${q.answers[0]}`) && !q.dest) {
     if (!ar) out.noAppr = true; // pas d'approche publiée pour cette piste : exercice écarté
     else if (ar[2]) out.ctx += en ? ` (${ar[0]} runway ${rwyName(key, en)}: localizer ${ar[1]} ${fq(ar[2])})` : ` (${ar[0]} piste ${rwyName(key, en)} : LOC ${ar[1]} ${ar[2]})`;
@@ -363,6 +365,29 @@ function nightChange(pos, date = new Date()) {
   return null;
 }
 
+// Point d'entrée et altitude de présentation de la VAC pour la piste, selon la provenance (« N » ou « S ») quand la carte
+// prévoit des arrivées différentes (Pau). Renvoie [point, altitude] (altitude absente si la VAC n'en fixe pas).
+function entryPoint(t, rwy, from = 'N') {
+  const e = typeof t.entree === 'string' ? t.entree : t.entree?.[rwy], a = t.arrAlt?.[rwy];
+  const pick = x => (x && typeof x === 'object' ? x[from] || x.N : x);
+  return [pick(e), pick(a)];
+}
+
+// TAF officielle (format JSON d'aviationweather.gov) à l'heure `t` (s) : conditions sous les minima VFR d'une zone de
+// contrôle (visibilité < 5 km ou plafond BKN/OVC < 1500 ft, SERA.5005 b)) ? Groupe de base, FM et BECMG (appliqué dès son
+// début) : « durable » ; TEMPO / PROB : « temporaire ». Visibilité en milles terrestres (« 6+ » = 6 SM et plus).
+function tafAt(taf, t) {
+  if (!taf?.fcsts?.length || t < taf.validTimeFrom || t >= taf.validTimeTo) return 'hors';
+  const low = f => (f.visib != null && f.visib !== '6+' && +f.visib * 1.609 < 5) || (f.clouds || []).some(c => /BKN|OVC|OVX/.test(c.cover) && c.base != null && c.base < 1500);
+  let base = null, temp = false;
+  for (const f of taf.fcsts) {
+    if (t < f.timeFrom || (f.timeTo && t >= f.timeTo && /TEMPO|PROB/.test(f.fcstChange || (f.probability ? 'PROB' : '')))) continue;
+    if (/TEMPO/.test(f.fcstChange || '') || f.probability) { if (t < f.timeTo && low(f)) temp = true; }
+    else base = { ...base, ...Object.fromEntries(Object.entries({ visib: f.visib, clouds: f.clouds?.length ? f.clouds : null }).filter(([, v]) => v != null)) };
+  }
+  return base && low(base) ? 'durable' : temp ? 'temporaire' : 'vfr';
+}
+
 // Tour ouverte ? Horaires ATS de l'AIP (UTC hiver ; en été, une heure plus tôt). `date` : maintenant.
 function lastSunday(y, m) { const d = new Date(Date.UTC(y, m + 1, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d; }
 function atsOpen(t, date = new Date()) {
@@ -374,4 +399,4 @@ function atsOpen(t, date = new Date()) {
   return plages.some(([a, b]) => (min(a) <= min(b) ? now >= min(a) && now < min(b) : now >= min(a) || now < min(b)));
 }
 
-if (typeof module !== 'undefined') module.exports = { kt, rwyName, transitionLevel, sunElevation, isNight, nightChange, atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };
+if (typeof module !== 'undefined') module.exports = { entryPoint, tafAt, kt, rwyName, transitionLevel, sunElevation, isNight, nightChange, atsOpen, trafficInfo, newCallsign, abbrev, similarCallsign, permMap, vary, cutMessage, gradeElements, csKey, bestRunway, realTerrain, trickyWrongs, atisFromMetar, atisChoices };

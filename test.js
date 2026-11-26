@@ -276,3 +276,19 @@ console.log('ATIS station automatique OK');
   const a = R.atisFromMetar('METAR X 191000Z 31010KT 9999 FEW030 12/05 Q1013 NOSIG', T('LFMT'), '30R', 'en');
   assert(/Runway in use 30 right\./.test(a.text) && a.piste === '30 right' && R.atisChoices(a, T('LFMT').pistes).piste.includes('30 left'));
   console.log('pistes parallèles, SID, VFR spécial, panne radio, navigations réelles OK'); }
+
+// ── Lot 6 : TAF, provenance, hors ligne ──
+{ const taf = { validTimeFrom: 1000, validTimeTo: 100000, fcsts: [
+    { timeFrom: 1000, timeTo: 50000, visib: '6+', clouds: [{ cover: 'BKN', base: 4000 }] },
+    { fcstChange: 'TEMPO', probability: 40, timeFrom: 1000, timeTo: 20000, visib: 2.49, clouds: [{ cover: 'BKN', base: 1200 }] },
+    { fcstChange: 'BECMG', timeFrom: 60000, timeTo: 100000, visib: 1.5, clouds: [] }] };
+  assert.deepStrictEqual([5000, 30000, 70000, 200000].map(t => R.tafAt(taf, t)), ['temporaire', 'vfr', 'durable', 'hors']);
+  const pau = TERRAINS.find(t => t.icao === 'LFBP');
+  assert.deepStrictEqual(R.entryPoint(pau, '13', 'S'), ['SW', 2500]); assert.deepStrictEqual(R.entryPoint(pau, '31', 'N'), ['NE', 2500]);
+  assert.deepStrictEqual(R.entryPoint(TERRAINS.find(t => t.icao === 'LFBD'), '23', 'S'), ['S', undefined]);
+  const arr = QUESTIONS.find(q => q.elements && q.lang === 'fr' && /Guéret à Saint-Exémery/.test(q.answers[0]));
+  const s13 = R.realTerrain(arr, pau, null, 'Golf', '13', 0, 'S');
+  assert(/estimé SW à 05/.test(s13.answers[0]) && /2500 pieds/.test(s13.answers[0]) && /arrivée du sud/.test(s13.ctx), s13.answers[0]);
+  const fs = require('fs'), sw = fs.readFileSync(__dirname + '/sw.js', 'utf8');
+  for (const f of sw.match(/CORE = \[([^\]]+)\]/)[1].match(/'([^']+)'/g).map(x => x.slice(1, -1))) if (f !== './') assert(fs.existsSync(__dirname + '/' + f), 'hors ligne : ' + f);
+  console.log('TAF, provenance, hors ligne OK'); }

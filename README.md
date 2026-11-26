@@ -71,6 +71,20 @@ Réalisme :
 - **⏱ Temps de réaction** (Expert, Expert+, hors QCM et examen) : plus de 10 s entre la fin du message et le début de
   la réponse = « trop tardif » (règle d'entraînement du site, pas une règle officielle).
 - **🗺️ Carte des navigations réelles** : terrains, points VAC, route et position simulée de l'avion à chaque message.
+- **📲 Application hors ligne** : le site s'installe sur téléphone (« Ajouter à l'écran d'accueil ») et reste utilisable
+  sans réseau, avec le dernier METAR (jusqu'à 24 h hors ligne) et les voix déjà téléchargées (sw.js, manifest). La
+  reconnaissance vocale du navigateur, elle, a besoin du réseau : hors ligne, utilisez l'écrit ou le QCM.
+- **🎤 Alternat sur téléphone** : gros bouton en bas de l'écran, à maintenir pendant qu'on parle (relâcher = fin
+  d'émission) ; un appui court garde l'arrêt automatique au silence.
+- **🧾 Débriefing du vol** (navigations réelles) : réussite par phase (départ, croisière, arrivée), temps de vol simulé,
+  collationnements tardifs, liste des messages ratés et bouton « Refaire les messages ratés ».
+- **🗺️ Réussite par terrain réel** dans les statistiques.
+- **🌦️ TAF de destination** : avant le départ, la TAF officielle (aviationweather.gov) ; à l'heure d'arrivée estimée,
+  prévoit-elle des conditions sous les minima VFR d'une zone de contrôle (durable, TEMPO / PROB, non) ?
+- **🔢 QNH en route** : l'information de vol transmet le QNH réel du terrain d'arrivée, à collationner.
+- **🧭 Entrée selon la provenance** (Pau, VAC) : arrivée du nord (13 : N à 1600 ft ; 31 : NE à 2500 ft) ou du sud
+  (13 : SW ; 31 : S, à 2500 ft), tirée au hasard pour la série.
+- **🔁 ATIS en boucle** : l'ATIS reconstitué passe en continu ; on prend l'écoute en cours de message.
 - **🛬 Toulouse-Blagnac et Montpellier** : piste du tour de piste de la VAC (14L/32R ; 12L/30R), dite « piste 32 droite »
   / « runway 32 right » (Manuel p. 15).
 - **📏 Niveau de transition** : ajouté à l'ATIS reconstitué et aux messages, calculé avec le QNH réel (plus bas niveau

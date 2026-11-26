@@ -59,7 +59,10 @@ function showStats() {
   $('#statsBody').innerHTML = `<h3>🧭 Bilan personnalisé</h3>${bil}
     <h3>🏅 Badges</h3><div class="badges">${badges(QUESTIONS, prog, extra).map(x =>
       `<span class="badge ${x.ok ? 'got' : ''}" title="${esc(x.desc)}">${x.icon} ${esc(x.nom)}<small>${esc(x.desc)}</small></span>`).join('')}</div>
-    <h3>📊 Réussite par catégorie</h3><table>${rows}</table>`;
+    <h3>📊 Réussite par catégorie</h3><table>${rows}</table>
+    ${Object.keys(extra.terr || {}).length ? `<h3>🗺️ Réussite par terrain réel</h3><table>${Object.entries(extra.terr).map(([icao, [o, k]]) => {
+      const n = o + k, p = n ? Math.round(100 * o / n) : null, t = TERRAINS.find(x => x.icao === icao);
+      return `<tr><td>${esc(t ? t.nom : icao)}</td><td><div class="meter"><div style="width:${p ?? 0}%;background:${color(p)}"></div></div></td><td class="num">${p ?? '—'} % <span class="muted">(${n})</span></td></tr>`; }).join('')}</table>` : ''}`;
   $$('#statsBody [data-fiche]').forEach(x => x.addEventListener('click', () => { $('#stats').close(); openFiche(x.dataset.fiche); }));
   $$('#statsBody [data-cible]').forEach(x => x.addEventListener('click', () => { $('#stats').close(); start({ type: 'cible', kind: x.dataset.cible }); }));
   $('#stats').showModal();
@@ -124,7 +127,8 @@ function start(sess = null) {
   near = nearTraffic(terrain);
   // piste en service (désignation complète, « 32R ») ; les exercices ne connaissent que les deux chiffres
   if (terrain) { memo.rwFull = bestRunway(terrain.pistes, wx?.wdir, wx?.wspd, terrain.pref); memo.rw24 = memo.rw32 = memo.rw12 = memo.rwFull.slice(0, 2); }
-  memo.sidPick = Math.floor(Math.random() * 6);
+  memo.sidPick = Math.floor(Math.random() * 6); memo.from = Math.random() < 0.5 ? 'N' : 'S'; // provenance des arrivées
+  runLog = [];
   atisLetter = terrain && wx ? atisFromMetar(wx.raw, terrain, memo.rwFull, 'fr')?.letter : null; // même lettre dans toute la série
   const live = terrain && wx && !session && !['alpha', 'err', 'due'].includes(val('regle')) && ['all', 'atis', 'base', 'nav', 'trafic'].includes($('#sujet').value)
     && !['fautif', 'dictee'].includes(val('mode')) ? liveAtis(val('lang') === 'all' ? (Math.random() < 0.5 ? 'fr' : 'en') : val('lang')) : [];
@@ -173,12 +177,12 @@ function start(sess = null) {
 }
 
 // ── Réalisme : prépare la carte (valeurs aléatoires, indicatif abrégé, message pour un autre avion, coupure) ──
-let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null, night = false, near = 0, aaMode = false;
+let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null, night = false, near = 0, aaMode = false, runLog = [], TAF = [];
 // METAR officiels récupérés par GitHub toutes les 30 min (metar.json, format aviationweather.gov) ; trop ancien = ignoré
 let METAR = [];
 function wxOf(icao) {
   const m = Array.isArray(METAR) && METAR.find(x => x.icaoId === icao);
-  if (!m || Date.now() / 1000 - m.obsTime > 3 * 3600) return null;
+  if (!m || Date.now() / 1000 - m.obsTime > (navigator.onLine === false ? 24 : 3) * 3600) return null; // hors ligne : dernier relevé gardé
   return { wdir: m.wdir, wspd: m.wspd, gust: m.wgst || null, qnh: Math.round(m.altim), raw: m.rawOb };
 }
 function prepare(q) {
@@ -192,7 +196,7 @@ function prepare(q) {
   if (q.atc && q.st && q.cat !== 'atis') memo.contact = true;
   const shown = short ? abbrev(series) : series;
   let c = vary(q, { cs: series, shown, values: (!!terrain || $('#random').checked) && session?.type !== 'defi', memo });
-  if (terrain) c = realTerrain(c, terrain, wx, atisLetter, memo.rwFull, memo.sidPick);
+  if (terrain) c = realTerrain(c, terrain, wx, atisLetter, memo.rwFull, memo.sidPick, memo.from);
   if (c.atc && !c.q && !c.elements) c = trickyWrongs(c, shown); // QCM piégeux : une seule petite erreur par choix
   if (short && !chrono) c.ctx += en ? ' (The controller already uses your abbreviated callsign.)' : ' (Le contrôleur utilise déjà votre indicatif abrégé.)';
   c.shown = shown; c.prepared = true;
@@ -217,7 +221,7 @@ function prepare(q) {
     const o = QUESTIONS.filter(x => x.lang === c.lang && x.st && x.atc && !x.q && !x.elements && x.cat !== 'nav');
     const ocs = newCallsign();
     let ov = vary(o[Math.floor(Math.random() * o.length)], { cs: ocs, values: true, memo: { ...memo } }); // même piste, mêmes valeurs
-    if (terrain) ov = realTerrain(ov, terrain, wx, atisLetter, memo.rwFull, memo.sidPick);
+    if (terrain) ov = realTerrain(ov, terrain, wx, atisLetter, memo.rwFull, memo.sidPick, memo.from);
     return { ...c, blocked: { text: ov.answers[0], lang: c.lang, st: c.st, pilot: true, cs: ocs }, full: c, qcmOnly: false, niv: 1,
       q: en ? 'Two stations transmitted at the same time: the message is garbled. What do you say?'
         : 'Deux stations ont émis en même temps : le message est brouillé. Que dites-vous ?',
@@ -245,7 +249,7 @@ function chatterFor(q, c) {
   const x = others[Math.floor(Math.random() * others.length)];
   const cs = val('niv') === '4' && Math.random() < 0.5 ? similarCallsign(series) : newCallsign(); // Expert+ : indicatif proche
   let v = vary(x, { cs, values: true, memo: { ...memo } });
-  if (terrain) v = realTerrain(v, terrain, wx, atisLetter, memo.rwFull, memo.sidPick);
+  if (terrain) v = realTerrain(v, terrain, wx, atisLetter, memo.rwFull, memo.sidPick, memo.from);
   const ex = [{ text: v.atc, lang: q.lang, st: c.st, who: `ATC → ${cs}` }, { text: v.answers[0], lang: q.lang, st: c.st, pilot: true, far: true, cs, who: cs }];
   return near >= 10 && Math.random() < 0.5 ? [...ex, ...(chatterFor({ ...q, x: 1 }, c) || [])].slice(0, 4) : ex; // très chargée : deux échanges
 }
@@ -260,10 +264,10 @@ function nearTraffic(t) {
 // Détresse en situation sur le terrain réel : message MAYDAY depuis le point d'entrée de la carte VAC, sur la
 // fréquence de la Tour (ordre des éléments : SERA.14095, Manuel p. 238), puis 121,5 MHz (AIP GEN 3.6.5.3 c)).
 function liveEmergency(lang) {
-  const en = lang === 'en', cs = series, P = typeof terrain.entree === 'string' ? terrain.entree : terrain.entree?.[memo.rwFull];
+  const en = lang === 'en', cs = series, [P, aP] = entryPoint(terrain, memo.rwFull, memo.from);
   if (!P) return [];
   const twr = `${terrain.radio} ${en ? 'Tower' : 'Tour'}`, f = en ? terrain.tour.replace(',', '.') : terrain.tour;
-  const alt = terrain.arrAlt?.[memo.rwFull] || terrain.tdp, cap = String(10 * (1 + Math.floor(Math.random() * 36))).padStart(3, '0');
+  const alt = aP || terrain.tdp, cap = String(10 * (1 + Math.floor(Math.random() * 36))).padStart(3, '0');
   const base = { live: true, prepared: true, cat: 'urgence', lang, regle: 'vfr', qcmOnly: true, shown: cs, callsigns: [csKey(cs)], atc: '',
     st: `${twr} ${f}`, metar: wx?.raw };
   const vac = `${en ? 'VAC chart' : 'carte VAC'} ${terrain.icao} (SIA, AIRAC 29/10/2026)`;
@@ -452,6 +456,10 @@ function liveNav(lang, id) {
   L.push(handoff(twrA, t1, en ? `Passing ${X}, leaving the ${A.radio} zone towards ${B.nom}.` : `Vous passez ${X} et quittez la zone de ${A.radio} vers ${B.nom}.`, info(r.fis[0])));
   const arrStn = r.arrFis ? info(r.fis[r.fis.length - 1]) : twrB, arrName = arrStn.replace(/ [\d.,]+$/, '');
   r.fis.slice(1).forEach((f, k) => L.push(handoff(info(r.fis[k]), Math.round(tc / 2), en ? `Cruising at ${alt} feet towards ${B.nom}.` : `En croisière à ${alt} pieds vers ${B.nom}.`, info(f))));
+  { const q = String(wb.qnh), sw = q.slice(0, -2) + [...q.slice(-2)].reverse().join(''), fisL = info(r.fis[r.fis.length - 1]);
+    L.push(S(fisL, 0, en ? `The flight information service passes you the ${cB} QNH (real METAR).` : `L’information de vol vous transmet le QNH de ${cB} (METAR réel).`,
+      `${cs}, QNH ${cB} ${q}.`, `QNH ${q}, ${cs}`,
+      [`Roger, ${cs}`, `QNH ${sw === q ? +q + 1 : sw}, ${cs}`, `QNH ${+q - 1}, ${cs}`], `${SERA('SERA.8015 e) 1) iii)')} (calage altimétrique collationné) ; ${AIP('ENR 1.7.2.3')}`)); }
   if (!r.arrFis) L.push(handoff(info(r.fis[r.fis.length - 1]), Math.max(1, (r.fis.length > 1 ? Math.round(tc / 2) : tc) - 5),
     en ? `Cruising at ${alt} feet; point ${Y} of the ${B.nom} VAC chart is 5 minutes ahead.` : `En croisière à ${alt} pieds ; le point ${Y} de la carte VAC de ${B.nom} est à 5 minutes.`, twrB));
   L.push(S(arrStn, r.arrFis ? Math.max(1, Math.round(tc / 2) - 5) : 0,
@@ -490,12 +498,23 @@ function liveNav(lang, id) {
   const where = min => { let m = min - 4; if (m <= 0) return A.pos;
     for (const [p, q, d] of legs) { if (m <= d) return [p[0] + (q[0] - p[0]) * m / d, p[1] + (q[1] - p[1]) * m / d]; m -= d; } return B.pos; };
   const pts = [[...A.pos, A.icao, 1], [...xPos, X], [...yPos, Y], [...B.pos, B.icao, 1]];
+  // TAF de destination à l'heure d'arrivée estimée (avant le roulage)
+  const taf = TAF.find(x => x.icaoId === B.icao), eta = Math.round((t0 + (4 + t1 + tc + t3) * 60000) / 1000), ft = taf && tafAt(taf, eta);
+  if (ft) {
+    const O = en ? { vfr: 'No: VFR conditions forecast', durable: 'Yes, lasting (base forecast or BECMG/FM)', temporaire: 'Only temporarily or with a probability (TEMPO / PROB)', hors: 'The TAF does not cover your arrival time' }
+      : { vfr: 'Non : conditions VFR prévues', durable: 'Oui, de façon durable (prévision de base, BECMG ou FM)', temporaire: 'Seulement temporairement ou avec une probabilité (TEMPO / PROB)', hors: 'La TAF ne couvre pas votre heure d’arrivée' };
+    L.unshift({ st: '', wait: 0, ctx: en ? `Flight preparation. ${cB} TAF: ${taf.rawTAF}. Estimated arrival ${hm(4 + t1 + tc + t3)} UTC.`
+      : `Préparation du vol. TAF de ${cB} : ${taf.rawTAF}. Arrivée estimée à ${hm(4 + t1 + tc + t3)} UTC.`, atc: '', ans: O[ft], wrong: Object.values(O).filter(o => o !== O[ft]),
+      src: `TAF officielle ${B.icao} (aviationweather.gov) ; minima : ${SERA('SERA.5005 b)')} (visibilité 5 km, plafond 1500 ft)`,
+      q: en ? 'At your arrival time, does the TAF forecast conditions below the VFR minima of a control zone?' : 'À votre heure d’arrivée, la TAF prévoit-elle des conditions sous les minima VFR d’une zone de contrôle ?' });
+  }
   let clock = 0;
   return L.map((c, i) => {
     clock += c.wait;
     c.map = { pts, plane: where(clock) };
     const atB = c.st.startsWith(B.radio) || c.st === arrStn;
     return { live: true, prepared: true, cat: 'nav', nav: i + 1, lang, regle: 'vfr', st: c.st, atc: c.atc, answers: [c.ans], wrong: c.wrong,
+      icao: atB ? B.icao : A.icao, phase: / Information /.test(c.st) ? 'cruise' : atB ? 'arr' : 'dep', clock, route: `${cA} → ${cB}`,
       ctx: `${c.wait >= 2 ? `⏱ ${hm(clock)} UTC (+${c.wait} min${en ? '' : ''}). ` : ''}${c.ctx}`, wait: c.wait,
       src: `${c.src} ; ${atB ? AIP_AD(B.icao) : AIP_AD(A.icao)}`, shown: cs, callsigns: [csKey(cs), csKey(abbrev(cs))],
       metar: (atB ? wb : wa).raw, map: c.map, ...(c.q ? { q: c.q, qcmOnly: true } : {}) };
@@ -543,8 +562,8 @@ function liveAtis(lang) {
   return qs.sort(() => Math.random() - 0.5).slice(0, 2).map(([q, ans, wrong]) => ({
     live: true, prepared: true, cat: 'atis', lang, regle: 'vfr', who: 'ATIS', shown: series,
     st: `${terrain.radio} ATIS ${en ? terrain.atis.replace(',', '.') : terrain.atis}`,
-    ctx: en ? `ATIS rebuilt from the official ${terrain.nom} METAR (fictitious information letter; transition level computed from the QNH; no local instructions). Listen to it before your first call.`
-      : `ATIS reconstitué d’après le METAR officiel de ${terrain.nom} (lettre d’information fictive ; niveau de transition calculé avec le QNH ; sans consignes locales). Écoutez-le avant votre premier appel.`,
+    ctx: en ? `ATIS rebuilt from the official ${terrain.nom} METAR (fictitious information letter; transition level computed from the QNH; no local instructions). It is broadcast in a loop: you tune in mid-message.`
+      : `ATIS reconstitué d’après le METAR officiel de ${terrain.nom} (lettre d’information fictive ; niveau de transition calculé avec le QNH ; sans consignes locales). Diffusion en boucle : vous prenez l’écoute en cours de message.`,
     atc: a.text, q, answers: [ans], wrong,
     src: `ATIS reconstitué (pas la diffusion réelle) : METAR ${terrain.icao} officiel (aviationweather.gov), mis en forme selon le ${MANUEL(214)} et p. 215-218 ; niveau de transition : ${AIP('ENR 1.7.2.3')} (au moins 1000 ft au-dessus de l’altitude de transition de 5000 ft), calculé avec le QNH`,
   }));
@@ -606,7 +625,14 @@ function next() {
   $$('.opts button').forEach(b => b.addEventListener('click', () => pick(b)));
   $('#go')?.addEventListener('click', () => grade($('#txt').value));
   $('#txt')?.addEventListener('input', () => { cur.startAt ??= Date.now(); }, { once: true });
-  $('#mic')?.addEventListener('click', listenMic);
+  const mic = $('#mic');
+  if (mic) { // alternat : maintenir pour parler (relâcher = fin d'émission) ; appui court : arrêt au silence
+    let t0 = 0;
+    mic.addEventListener('pointerdown', e => { e.preventDefault(); t0 = Date.now(); if (!answered && !mic.disabled) listenMic(); });
+    for (const ev of ['pointerup', 'pointercancel']) mic.addEventListener(ev, () => { if (Date.now() - t0 > 600) recNow?.stop(); });
+    mic.addEventListener('contextmenu', e => e.preventDefault());
+    if (matchMedia('(pointer: coarse)').matches) mic.textContent = '🎤 Maintenir pour parler';
+  }
   if (listen) say(undefined, 500 + Math.random() * 900 + Math.min(3000, (cur.wait || 0) * 150)); else prefetchVoice(); // navigation : le temps passe // le contrôleur ne parle pas instantanément
   ($('#txt') || $('.opts button') || $('#mic'))?.focus();
   tick();
@@ -810,7 +836,12 @@ async function play(lines, delay = 0) {
 // `text` par défaut : le message de la carte (ou sa partie reçue si la fin est coupée), précédé la première fois
 // des échanges des autres avions sur la fréquence.
 function say(text, delay = 0) {
-  const lines = cardLines(text);
+  let lines = cardLines(text);
+  // ATIS : diffusion en boucle ; on prend l'écoute en cours de message, puis le message complet repasse deux fois
+  if (text == null && cur.cat === 'atis' && cur.live) {
+    const ph = cur.atc.split(/(?<=\.) /), k = 1 + Math.floor(Math.random() * (ph.length - 2));
+    lines = [ph.slice(k).join(' '), cur.atc, cur.atc].map(t => ({ text: t, lang: cur.lang, st: cur.st }));
+  }
   if (cur.chatter) cur.chatterDone = true;
   const card = cur;
   return play(lines, delay).then(done => { if (done && text == null) { if (card === cur) cur.heardAt ??= Date.now(); armRecall(); } return done; });
@@ -962,6 +993,9 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     total++; if (good) { ok++; streak++; } else streak = 0;
     extra.best = Math.max(extra.best || 0, streak);
     if (!good && !cur.pilote) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
+    const icao = cur.icao || terrain?.icao; // réussite par terrain réel
+    if (icao) { const t = ((extra.terr ||= {})[icao] ||= [0, 0]); t[good ? 0 : 1]++; }
+    runLog.push({ q: pool[idx - 1], good, late });
     save();
   }
   if (session) session.log.push({ q: cur, good, chosen: chosen || said });
@@ -1045,6 +1079,20 @@ function end() {
     body = `<p class="ctx">🧭 ${esc(L.titre)} : ${ok} / ${total} dans cette série. Leçon réussie à ${Math.round(100 * L.pct)} %
       (${L.done} / ${L.qs.length} exercices justes).</p><p class="muted" style="margin:0 20px">${nx ? (nx.open ? `✅ Leçon suivante débloquée : ${esc(nx.titre)}.`
       : `Il faut 80 % pour débloquer « ${esc(nx.titre)} ».`) : 'Dernière leçon du parcours.'}</p>`;
+  } else if (!session && pool.some(q => q.cat === 'nav' && q.live) && runLog.length) {
+    // débriefing du vol : réussite par phase, collationnements tardifs, messages ratés à refaire
+    const ph = { dep: 'Départ', cruise: 'Croisière', arr: 'Arrivée' }, by = {};
+    for (const x of runLog) { const b = (by[x.q.phase] ||= [0, 0]); b[x.good ? 0 : 1]++; }
+    const missed = runLog.filter(x => !x.good), late = runLog.filter(x => x.late).length, last = pool[pool.length - 1];
+    title = 'DÉBRIEFING DU VOL';
+    body = `<p class="ctx">🛬 ${esc(last.route || '')} : ${ok} / ${total} (${pct} %) ; temps de vol simulé ${last.clock || 0} min${late ? ` ; ${late} collationnement(s) tardif(s)` : ''}.</p>
+      <table class="debrief">${Object.entries(ph).filter(([k]) => by[k]).map(([k, n]) => { const [o, b] = by[k];
+        return `<tr><td>${n}</td><td><div class="meter"><div style="width:${Math.round(100 * o / (o + b))}%;background:${b ? '#d97706' : 'var(--ok)'}"></div></div></td><td class="num">${o} / ${o + b}</td></tr>`; }).join('')}</table>
+      ${missed.length ? `<ol class="review">${missed.map(x => `<li><strong>${esc(x.q.atc || x.q.q)}</strong><br>Attendu : <strong>${esc(x.q.answers[0])}</strong></li>`).join('')}</ol>` : '<p class="ctx">Aucune erreur sur ce vol. Bravo !</p>'}`;
+    if (missed.length) setTimeout(() => {
+      $('#again').insertAdjacentHTML('afterend', '<button id="redo">🔁 Refaire les messages ratés</button>');
+      $('#redo').addEventListener('click', () => { pool = missed.map(x => ({ ...x.q, retry: false, heardAt: null, startAt: null })); idx = ok = total = streak = 0; runLog = []; stats(); next(); });
+    });
   } else if (session?.type === 'cible') {
     title = 'ENTRAÎNEMENT CIBLÉ';
     body = `<p class="ctx">🎯 ${esc(CONSEILS[session.kind]?.[0] || '')} : ${ok} / ${total} (${pct} %).</p>`;
@@ -1111,6 +1159,9 @@ $('#terrain').insertAdjacentHTML('beforeend', TERRAINS.map(t => `<option value="
 $$('.settings input, #sujet, #terrain').forEach(i => i.addEventListener('change', () => start()));
 $('#statsBtn').addEventListener('click', showStats);
 $('#parcoursBtn').addEventListener('click', showParcours);
+fetch('taf.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(j => { TAF = Array.isArray(j) ? j : []; }).catch(() => {});
+// mode hors ligne : application installable (sw.js)
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 fetch('traffic.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(j => { TRAFFIC = j; }).catch(() => {});
 fetch('metar.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(j => { METAR = j; if ($('#terrain').value) start(); }).catch(() => {});
 $('#examBtn').addEventListener('click', () => {
