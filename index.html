@@ -25,6 +25,9 @@
     <button id="parcoursBtn">🧭 Parcours</button>
     <button id="examBtn">🎓 Examen blanc</button>
     <button id="defiBtn">🏆 Défi du jour</button>
+    <button id="prepaBtn" title="Série sur le terrain de votre prochain vol : fréquences, point d’entrée, ATIS, TAF, panne radio">✈️ Vol de demain</button>
+    <button id="rareBtn" title="Interception, détresse et urgence, panne radio, VFR spécial">🧯 Situations rares</button>
+    <button id="refreshBtn" title="10 minutes sur vos points faibles et les situations rares">🔁 Remise à niveau</button>
     <button id="fichesBtn">📚 Fiches de cours</button>
     <button id="glossBtn">📖 Glossaire FR ⇄ EN</button>
     <span class="disp" role="group" aria-label="Affichage">
@@ -57,6 +60,14 @@
       (selon la langue choisie).</p>
     <ol id="parcoursBody" class="lecons"></ol>
     <div class="row"><button class="primary" onclick="this.closest('dialog').close()">Fermer</button></div>
+  </dialog>
+
+  <dialog id="prepa" aria-labelledby="prepaTi">
+    <h2 id="prepaTi">✈️ Préparer le vol de demain</h2>
+    <p class="muted">Piste et ATIS d’après le METAR du moment ; TAF officielle pour votre heure d’arrivée ; fréquences et points de la carte VAC.</p>
+    <div class="row"><label>Terrain <select id="prepaT"></select></label></div>
+    <div class="row"><label>Arrivée le <input type="date" id="prepaD"></label> <label>à <input type="time" id="prepaH" value="10:00"> UTC</label></div>
+    <div class="row"><button class="primary" id="prepaGo">Préparer</button><button onclick="this.closest('dialog').close()">Annuler</button></div>
   </dialog>
 
   <dialog id="stats" aria-labelledby="statsT">
@@ -118,6 +129,8 @@
         <label class="tog" title="Certains messages sont pour un autre avion : répondez « Pas pour moi »"><input type="checkbox" id="busy"> 📻 Fréquence encombrée</label>
         <label class="tog" title="Après le premier échange, le contrôleur abrège votre indicatif et vous collationnez avec l’indicatif abrégé (F-CD) — Manuel DSNA p. 18, SERA.14055"><input type="checkbox" id="abbr" checked> 🔤 Indicatif abrégé dans mes réponses</label>
         <label class="tog" title="La fin de certains messages est coupée : demandez « Répétez tout après… »"><input type="checkbox" id="cuts"> ✂️ Coupures radio</label>
+        <label class="tog" title="10 bonnes réponses d’affilée : niveau au-dessus ; 3 erreurs sur les 5 dernières : niveau en dessous"><input type="checkbox" id="adapt"> 📈 Niveau adaptatif</label>
+        <label class="tog" title="Le contrôleur part d’un débit lent et accélère à chaque bonne réponse ; les clairances s’allongent au fil de la série"><input type="checkbox" id="tempo"> 🏃 Débit progressif</label>
       </div>
     </section>
 

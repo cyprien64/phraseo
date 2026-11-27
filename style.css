@@ -179,3 +179,6 @@ dialog h3 { margin: 16px 0 6px; font-size: 1rem; }
   #mic.on { background: var(--ko); border-color: var(--ko); }
   #card:has(#mic) { padding-bottom: 110px; }
 }
+
+.comeback { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--card, transparent); border: 1px solid #d97706; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fb .adapt { font-weight: 600; color: #d97706; }

@@ -85,6 +85,25 @@ Réalisme :
 - **🧭 Entrée selon la provenance** (Pau, VAC) : arrivée du nord (13 : N à 1600 ft ; 31 : NE à 2500 ft) ou du sud
   (13 : SW ; 31 : S, à 2500 ft), tirée au hasard pour la série.
 - **🔁 ATIS en boucle** : l'ATIS reconstitué passe en continu ; on prend l'écoute en cours de message.
+- **📈 Niveau adaptatif** (option) : 10 bonnes réponses d'affilée → niveau au-dessus ; 3 erreurs sur les 5 dernières
+  réponses → niveau en dessous, et le message raté revient 3 cartes plus loin (règle d'entraînement du site).
+- **🔎 Éléments du collationnement** (📊 Stats, réponses à l'écrit et à l'oral) : pour l'indicatif, la piste, le QNH, le code
+  transpondeur, le niveau, le cap et le sens gauche/droite, part des collationnements où l'élément a été oublié ou faux
+  (« vous oubliez l'indicatif dans 35 % des collationnements »), avec une série ciblée.
+- **🏃 Débit progressif** (option) : le contrôleur part d'un débit lent (instructeur) et accélère à chaque bonne réponse jusqu'au
+  débit d'une fréquence chargée (une erreur ralentit) ; les messages s'allongent au fil de la série (règle d'entraînement du site).
+- **🛑 Imprévus en vol** (sujet, et un imprévu glissé dans les séries sur terrain réel) : attente à vue verticale d'un point
+  (Manuel p. 148), 360 de retardement (p. 132), remise de gaz (p. 159), nouvelle destination (p. 84). Le manuel ne donne pas
+  d'expression pour un changement de piste en service : pas d'exercice.
+- **🧯 Situations rares** (bouton) : interception par un aéronef militaire (SERA.11015 : 121,5 MHz, 7700, signaux visuels des
+  tableaux S11-1 et S11-2, expressions du tableau S11-3 transmises deux fois — en français seulement), détresse et urgence,
+  panne radio, VFR spécial ; avec un terrain réel, détresse depuis un point VAC et panne radio de la VAC.
+- **🔁 Remise à niveau** (bouton, proposée d'office après 3 semaines sans entraînement) : 10 exercices sur vos points faibles
+  (erreurs, révisions dues) puis 5 situations rares, environ 10 minutes.
+- **✈️ Vol de demain** (bouton) : terrain, date et heure d'arrivée (UTC). ATIS reconstitué avec le METAR du moment, fréquences
+  Tour et Sol (AIP), point d'entrée de la VAC selon la provenance (Pau, seul terrain dont la VAC le fixe ainsi), TAF officielle
+  à l'heure prévue (« ne couvre pas votre heure » si elle est trop courte : à revoir le matin du vol), panne radio de la VAC,
+  VFR spécial si la météo l'impose, puis des exercices de base adaptés au terrain.
 - **🛬 Toulouse-Blagnac et Montpellier** : piste du tour de piste de la VAC (14L/32R ; 12L/30R), dite « piste 32 droite »
   / « runway 32 right » (Manuel p. 15).
 - **📏 Niveau de transition** : ajouté à l'ATIS reconstitué et aux messages, calculé avec le QNH réel (plus bas niveau
@@ -127,7 +146,7 @@ Réalisme :
   du modèle du manuel (p. 45 et 149).
 - **🗺️ Terrain réel** (Pau, Biarritz, Tarbes, Lyon-Bron, Nantes, Bordeaux, Perpignan, Agen, Toulouse, Montpellier) : nom radio, pistes et fréquences Tour / Sol de l'AIP
   (AD 2, AIRAC du 29/10/2026) ; **météo réelle** : le dernier METAR est affiché, la piste est choisie face au vent, et le
-  vent et le QNH des messages sont ceux du METAR (vent variable : vent de l'exercice ; METAR de plus de 3 h : ignoré).
+  vent et le QNH des messages sont ceux du METAR (vent variable : vent de l'exercice ; METAR de plus de 12 h : ignoré ; à partir de 2 h, son âge est affiché, car GitHub ne lance la mise à jour planifiée que toutes les quelques heures).
   Les METAR viennent d'aviationweather.gov (NOAA), récupérés par GitHub toutes les 30 minutes (`.github/workflows/pages.yml`).
   Les points de report, l'AFIS et l'ATIS restent fictifs.
 - **🕵️ Pilote fautif** (mode) : un pilote collationne, juste ou faux ; il faut dire s'il s'est trompé, puis la correction
@@ -153,7 +172,7 @@ Suivi : les questions ratées reviennent plus souvent et sont regroupées dans *
 le taux de réussite par langue, règles et phase de vol. La progression reste enregistrée dans le navigateur de l'appareil.
 
 Apprentissage :
-- **🧭 Parcours progressif** : 14 leçons dans l'ordre (alphabet, bases VFR, sol, premier appel… jusqu'aux urgences) ;
+- **🧭 Parcours progressif** : 16 leçons dans l'ordre (alphabet, bases VFR, sol, premier appel… jusqu'aux urgences, imprévus en vol et interception) ;
   une leçon se débloque à 80 % d'exercices justes dans la précédente.
 - **🎓 Examen blanc** : 30 questions en QCM de tous niveaux, 15 minutes, réussite à 80 %, correction détaillée seulement à la fin (format d'entraînement,
   pas le format officiel d'un examen).

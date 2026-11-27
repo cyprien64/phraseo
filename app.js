@@ -34,6 +34,16 @@ const cats = q => q.regle === 'alpha' ? [['Thème', 'Alphabet OACI']] : [
   ['Sujet / phase', q.cat ? SUJETS[q.cat]
     : q.st ? PHASES.find(([r]) => r.test(`${q.st} ${q.atc} ${q.answers[0]}`))[1] : 'Théorie (codes, collationnement…)']];
 
+// Éléments du collationnement (écrit, oral) : part des collationnements où l'élément a été oublié ou faux.
+const ELEM_NOM = { indicatif: 'l’indicatif', qnh: 'le QNH', piste: 'la piste', transpondeur: 'le code transpondeur', niveau: 'le niveau ou l’altitude', cap: 'le cap', sens: 'gauche / droite' };
+function elemRows() {
+  const E = Object.entries(extra.elem || {}).filter(([k, [n]]) => ELEM_NOM[k] && n).map(([k, [n, m]]) => [k, n, m, Math.round(100 * m / n)]).sort((a, b) => b[3] - a[3]);
+  if (!E.length) return '<h3>🔎 Éléments du collationnement</h3><p class="muted">Répondez à l’écrit ou à l’oral pour voir ce que vous oubliez le plus.</p>';
+  const [k0, n0, , p0] = E[0];
+  return `<h3>🔎 Éléments du collationnement</h3>${n0 >= 5 && p0 ? `<p>Vous oubliez ou vous trompez sur <strong>${ELEM_NOM[k0]}</strong> dans ${p0} % des collationnements.</p>` : ''}
+    <table>${E.map(([k, n, , p]) => `<tr><td>${esc(ELEM_NOM[k])}</td><td><div class="meter"><div style="width:${p}%;background:${p >= 20 ? 'var(--ko)' : p >= 10 ? '#d97706' : 'var(--ok)'}"></div></div></td>
+      <td class="num">${p} % <span class="muted">(${n})</span></td><td>${n >= 5 && p ? `<button class="ghost" data-cible="${k}">🎯 Série ciblée</button>` : ''}</td></tr>`).join('')}</table>`;
+}
 function showStats() {
   const g = {};
   for (const q of QUESTIONS) for (const [grp, c] of cats(q)) {
@@ -57,6 +67,7 @@ function showStats() {
       ${weak.length ? `<p>À travailler en priorité : ${weak.map(([c, r]) => `<strong>${esc(c)}</strong> (${Math.round(r * 100)} %)`).join(', ')}.</p>` : ''}
       <p class="muted">${QUESTIONS.filter(isDue).length} exercice(s) à réviser aujourd’hui (thème « 📅 À réviser »).</p>`;
   $('#statsBody').innerHTML = `<h3>🧭 Bilan personnalisé</h3>${bil}
+    ${elemRows()}
     <h3>🏅 Badges</h3><div class="badges">${badges(QUESTIONS, prog, extra).map(x =>
       `<span class="badge ${x.ok ? 'got' : ''}" title="${esc(x.desc)}">${x.icon} ${esc(x.nom)}<small>${esc(x.desc)}</small></span>`).join('')}</div>
     <h3>📊 Réussite par catégorie</h3><table>${rows}</table>
@@ -76,7 +87,7 @@ const today = () => new Date().toLocaleDateString('sv'); // AAAA-MM-JJ à l'heur
 // (leçon : la dictée devient l'écrit et le pilote fautif le QCM, pour que les réponses comptent dans la progression)
 const modeNow = () => {
   const m = val('mode');
-  if (session && !/cible|lecon/.test(session.type)) return 'qcm';
+  if (session && !/cible|lecon|rare|refresh|prepa/.test(session.type)) return 'qcm';
   return session?.type === 'lecon' ? ({ dictee: 'ecrit', fautif: 'qcm' }[m] || m) : m;
 };
 const navOrder = (a, b) => b.lang.localeCompare(a.lang) || a.nav - b.nav; // français puis anglais, dans l'ordre du vol
@@ -84,6 +95,29 @@ const words = s => s.split(' ').length;
 
 // exercices de la langue choisie (l'alphabet est dans toutes les langues)
 const langOk = q => val('lang') === 'all' || q.regle === 'alpha' || q.lang === val('lang');
+
+const GOAROUND = /^F-GBCD, (remettez les gaz|go around)\b/; // remises de gaz du manuel (p. 159), aussi dans « Imprévus »
+const NIV = { 1: 'Débutant', 2: 'Confirmé', 3: 'Expert', 4: 'Expert+' };
+// Niveau adaptatif (option, entraînement libre) : 10 bonnes réponses d'affilée → niveau au-dessus ; 3 erreurs sur les
+// 5 dernières réponses → niveau en dessous, et le message raté revient 3 cartes plus loin. Règle d'entraînement du site.
+// Le nouveau niveau vaut pour les messages suivants (voix, bruit, écoute seule) ; la série en cours garde ses exercices.
+let recent = [], adaptMsg = '';
+function adaptLevel(good) {
+  recent = [...recent, good].slice(-5);
+  const n = +val('niv'), to = good && streak && streak % 10 === 0 && n < 4 ? n + 1 : !good && recent.filter(x => !x).length >= 3 && n > 1 ? n - 1 : 0;
+  if (!to) return '';
+  $(`#n-${to}`).checked = true; recent = [];
+  if (to < n) pool.splice(Math.min(pool.length, idx + 3), 0, pool[idx - 1]);
+  return to > n ? `📈 Niveau ${NIV[to]} : 10 bonnes réponses d’affilée.` : `📉 Retour au niveau ${NIV[to]} : 3 erreurs sur les 5 dernières réponses. Le message raté reviendra bientôt.`;
+}
+// Situations rares (ce qu'on pratique peu en vrai, compétence qui se perd vite) : interception, détresse et urgence,
+// panne radio, VFR spécial. Les questions d'interception n'existent qu'en français.
+function rarePool() {
+  const sh = a => a.sort(() => Math.random() - 0.5), txt = q => `${q.ctx} ${q.q || ''} ${q.atc} ${q.answers[0]}`;
+  const by = (f, n) => sh(QUESTIONS.filter(q => q.regle !== 'alpha' && f(q))).slice(0, n);
+  return sh([...by(q => q.cat === 'intercept', 4), ...by(q => q.cat === 'urgence' && langOk(q) && /MAYDAY|PAN PAN/.test(txt(q)), 3),
+    ...by(q => langOk(q) && /7600|panne radio|radio failure/i.test(txt(q)), 2), ...by(q => langOk(q) && /VFR spécial|special VFR/.test(txt(q)), 2)]);
+}
 
 function start(sess = null) {
   session = sess; clearInterval(timer);
@@ -97,11 +131,17 @@ function start(sess = null) {
     session.titre = L.titre;
     pool = L.qs[0]?.nav ? [...L.qs].sort(navOrder)
       : L.qs.sort(() => Math.random() - 0.5).sort((a, b) => (prog[a.id]?.[2] === 1) - (prog[b.id]?.[2] === 1)).slice(0, 15);
-  } else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
+  } else if (session?.type === 'rare') pool = rarePool();
+  else if (session?.type === 'refresh') { // remise à niveau : points faibles (erreurs, révisions dues) puis situations rares
+    const weak = QUESTIONS.filter(q => langOk(q) && q.regle !== 'alpha' && (isErr(q) || isDue(q)) && (q.niv || 1) <= +val('niv')).sort(() => Math.random() - 0.5);
+    const fill = QUESTIONS.filter(q => langOk(q) && q.atc && !q.q && q.st && !q.cat && (q.niv || 1) <= +val('niv')).sort(() => Math.random() - 0.5);
+    pool = [...new Set([...weak, ...fill])].slice(0, 10).concat(rarePool().slice(0, 5));
+  } else if (session?.type === 'prepa') pool = []; // construite plus bas, une fois le terrain et la météo connus
+  else if (session?.type === 'exam') // examen blanc : tous sujets, selon la langue choisie
     pool = QUESTIONS.filter(langOk).sort(() => Math.random() - 0.5).slice(0, EXAM_N);
   else {
     // la navigation complète (enchaînement) n'apparaît que dans son sujet, sauf en révision
-    pool = QUESTIONS.filter(q => (r === 'alpha' || (su === 'all' ? q.cat !== 'nav' || r === 'err' || r === 'due' : (q.cat || 'base') === su)) &&
+    pool = QUESTIONS.filter(q => (r === 'alpha' || (su === 'all' ? q.cat !== 'nav' || r === 'err' || r === 'due' : (q.cat || 'base') === su || (su === 'imprevu' && GOAROUND.test(q.atc || '')))) &&
       (r === 'err' ? isErr(q) && langOk(q) : r === 'due' ? isDue(q) && langOk(q)
         : r === 'alpha' ? q.regle === 'alpha' : q.regle !== 'alpha' && (r === 'all' || q.regle === r) && langOk(q))
       && (m === 'qcm' || !q.qcmOnly) && (m !== 'dictee' || (q.atc && !q.q && words(q.atc) >= 8)) && (m !== 'fautif' || (q.atc && !q.q))
@@ -111,18 +151,19 @@ function start(sess = null) {
     else if (!chrono) {
       if (r !== 'err' && r !== 'due') pool = pool.concat(pool.filter(isErr)); // les questions ratées reviennent deux fois plus souvent
       pool.sort(() => Math.random() - 0.5);
+      if ($('#tempo').checked) { const n = q => words(q.atc || q.q || q.ctx || ''); pool.sort((a, b) => n(a) - n(b)); } // clairances de plus en plus longues
     }
   }
   if (session) {
     session.log = []; session.t0 = Date.now();
     if (session.type === 'exam') { session.deadline = session.t0 + EXAM_MIN * 60000; timer = setInterval(tick, 1000); }
   }
-  idx = ok = total = streak = 0;
+  idx = ok = total = streak = 0; tempoK = 0; recent = [];
   // un indicatif par série, comme un vrai vol ; F-GBCD pour le défi du jour (identique pour tous)
   series = $('#random').checked && session?.type !== 'defi' ? newCallsign() : 'F-GBCD';
   memo = {}; // même piste et mêmes codes pendant toute la série
   // terrain réel (pas pour le défi, identique pour tous) : piste face au vent du dernier METAR
-  terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === $('#terrain').value) || null;
+  terrain = session?.type === 'defi' ? null : TERRAINS.find(t => t.icao === (session?.icao || $('#terrain').value)) || null;
   wx = terrain && wxOf(terrain.icao);
   near = nearTraffic(terrain);
   // piste en service (désignation complète, « 32R ») ; les exercices ne connaissent que les deux chiffres
@@ -168,6 +209,18 @@ function start(sess = null) {
   // navigations réelles (cartes VAC, METAR des deux terrains)
   if (su.startsWith('navreel:') && !session && !['alpha', 'err', 'due'].includes(r))
     pool = (val('lang') === 'all' ? ['fr', 'en'] : [val('lang')]).flatMap(l => liveNav(l, su.slice(8)));
+  // un imprévu en plein vol (attente, 360, remise de gaz…) au milieu d'une série sur terrain réel
+  if (live.length && su === 'all' && pool.length > 8) {
+    const im = QUESTIONS.filter(q => (q.cat === 'imprevu' || GOAROUND.test(q.atc || '')) && q.lang === L1 && q.regle === 'vfr');
+    pool.splice(live.length + 4 + Math.floor(Math.random() * 4), 0, im[Math.floor(Math.random() * im.length)]);
+  }
+  // situations rares avec un terrain réel : détresse depuis un point de la VAC et panne radio de la VAC
+  if (session?.type === 'rare' && terrain && wx) pool.splice(4, 0, ...liveEmergency(L1), ...livePanne(L1));
+  // préparation du vol de demain : ATIS (METAR du moment), fréquences, point d'entrée, TAF à l'heure prévue, panne radio, VFR spécial,
+  // puis des exercices de base adaptés au terrain
+  if (session?.type === 'prepa') pool = wx ? [...liveAtis(L1), ...livePrepa(L1, session.at), ...livePanne(L1), ...liveSvfr(L1),
+    ...QUESTIONS.filter(q => !q.cat && q.regle === 'vfr' && q.lang === L1 && q.atc && !q.q && q.st && (q.niv || 1) <= +val('niv'))
+      .sort(() => Math.random() - 0.5).slice(0, 8)] : [];
   // hors horaires ATS avec fréquence A/A publiée : la série passe en auto-information sur cette fréquence
   aaMode = !!(terrain?.aa && !atsOpen(terrain) && ['all', 'afis'].includes(su) && !session && !['alpha', 'err', 'due'].includes(r));
   if (aaMode) pool = [...live.filter(q => q.cat === 'atis'), ...liveAA(), ...QUESTIONS.filter(q => q.cat === 'afis' && q.lang === 'fr' && q.qcmOnly
@@ -182,8 +235,10 @@ let series = 'F-GBCD', memo = {}, terrain = null, wx = null, atisLetter = null, 
 let METAR = [];
 function wxOf(icao) {
   const m = Array.isArray(METAR) && METAR.find(x => x.icaoId === icao);
-  if (!m || Date.now() / 1000 - m.obsTime > (navigator.onLine === false ? 24 : 3) * 3600) return null; // hors ligne : dernier relevé gardé
-  return { wdir: m.wdir, wspd: m.wspd, gust: m.wgst || null, qnh: Math.round(m.altim), raw: m.rawOb };
+  // GitHub ne lance la mise à jour planifiée que toutes les quelques heures : relevé gardé 12 h (24 h hors ligne), âge affiché
+  const age = m && (Date.now() / 1000 - m.obsTime) / 3600;
+  if (!m || age > (navigator.onLine === false ? 24 : 12)) return null;
+  return { wdir: m.wdir, wspd: m.wspd, gust: m.wgst || null, qnh: Math.round(m.altim), raw: m.rawOb, age: Math.floor(age) };
 }
 function prepare(q) {
   if (q.regle === 'alpha' || q.prepared) return q;
@@ -407,6 +462,39 @@ function liveCond(lang) {
 // de départ de la VAC, information de vol, entrée par le point publié, tour de piste de la VAC. Phraséologie du manuel,
 // comme la navigation fictive. Temps de vol à 100 kt entre les points (heure UTC simulée affichée, vol en accéléré).
 const nm = (a, b) => Math.hypot((a[0] - b[0]) * 60, (a[1] - b[1]) * 60 * Math.cos(a[0] * Math.PI / 180));
+// TAF officielle à une heure donnée (arrivée estimée, vol de demain) : conditions sous les minima VFR d'une CTR ?
+function tafQ(lang, icao, name, ms, day = false) {
+  const taf = TAF.find(x => x.icaoId === icao), ft = taf && tafAt(taf, Math.round(ms / 1000));
+  if (!ft) return null;
+  const en = lang === 'en', d = new Date(ms).toISOString(), when = `${day ? `${d.slice(8, 10)}/${d.slice(5, 7)} ` : ''}${d.slice(11, 16).replace(':', '')} UTC`;
+  const O = en ? { vfr: 'No: VFR conditions forecast', durable: 'Yes, lasting (base forecast or BECMG/FM)', temporaire: 'Only temporarily or with a probability (TEMPO / PROB)', hors: 'The TAF does not cover your arrival time' }
+    : { vfr: 'Non : conditions VFR prévues', durable: 'Oui, de façon durable (prévision de base, BECMG ou FM)', temporaire: 'Seulement temporairement ou avec une probabilité (TEMPO / PROB)', hors: 'La TAF ne couvre pas votre heure d’arrivée' };
+  return { ctx: en ? `Flight preparation. ${name} TAF: ${taf.rawTAF}. Estimated arrival ${when}.` : `Préparation du vol. TAF de ${name} : ${taf.rawTAF}. Arrivée estimée le ${when}.`,
+    ans: O[ft], wrong: Object.values(O).filter(o => o !== O[ft]),
+    src: `TAF officielle ${icao} (aviationweather.gov) ; minima : ${SERA('SERA.5005 b)')} (visibilité 5 km, plafond 1500 ft)`,
+    q: en ? 'At your arrival time, does the TAF forecast conditions below the VFR minima of a control zone?' : 'À votre heure d’arrivée, la TAF prévoit-elle des conditions sous les minima VFR d’une zone de contrôle ?' };
+}
+// Préparation du vol de demain sur un terrain réel : fréquences (AIP), point d'entrée de la VAC pour la piste face au vent
+// du METAR du moment, TAF à l'heure d'arrivée prévue.
+function livePrepa(lang, at) {
+  const t = terrain, en = lang === 'en', fq = f => (en ? f.replace(',', '.') : f), out = [];
+  const card = (ctx, q, ans, wrong, src) => ({ live: true, prepared: true, cat: 'base', lang, regle: 'vfr', qcmOnly: true, atc: '', shown: series,
+    callsigns: [csKey(series)], st: '', ctx, q, answers: [ans], wrong: [...new Set(wrong)].filter(w => w !== ans).slice(0, 3), src });
+  const F = [[`${t.radio} ${en ? 'Tower' : 'Tour'}`, t.tour], [`${t.radio} ${en ? 'Ground' : 'Sol'}`, t.sol], [`${t.radio} ATIS`, t.atis]].filter(([, f]) => f);
+  for (const [n, f] of F.slice(0, 2)) out.push(card(en ? `Flight to ${t.nom} tomorrow.` : `Vol vers ${t.nom} demain.`,
+    en ? `What is the "${n}" frequency?` : `Quelle est la fréquence « ${n} » ?`, fq(f),
+    [...F.filter(([, g]) => g !== f).map(([, g]) => fq(g)), fq(swapFreq(f))], AIP_AD(t.icao)));
+  // point d'entrée : seulement quand la VAC le fixe selon la piste et la provenance (Pau) ; ailleurs la carte en propose
+  // plusieurs et le choix dépend de la route suivie
+  const [e, alt] = entryPoint(t, memo.rwFull, memo.from), pts = [...new Set(JSON.stringify(t.entree || '').match(/"[A-Z]{1,3}"/g) || [])].map(x => x.slice(1, -1));
+  if (e && typeof t.entree === 'object') out.push(card(en ? `Runway in use with the current METAR wind: ${rwyName(memo.rwFull, true)}${typeof t.entree?.[memo.rwFull] === 'object' && !Array.isArray(t.entree[memo.rwFull]) ? `, arriving from the ${memo.from === 'S' ? 'south' : 'north'}` : ''}.`
+      : `Piste en service avec le vent du METAR du moment : ${rwyName(memo.rwFull, false)}${typeof t.entree?.[memo.rwFull] === 'object' && !Array.isArray(t.entree[memo.rwFull]) ? `, arrivée du ${memo.from === 'S' ? 'sud' : 'nord'}` : ''}.`,
+    en ? 'Which VAC entry point do you report?' : 'Par quel point d’entrée de la VAC arrivez-vous ?', `${e}${alt ? ` (${alt} ft)` : ''}`,
+    pts.filter(p => p !== e).map(p => `${p}${alt ? ` (${alt} ft)` : ''}`), `Carte VAC ${t.icao} (SIA, AIRAC 29/10/2026)`));
+  const tq = tafQ(lang, t.icao, t.nom, at, true);
+  if (tq) out.push(card(tq.ctx, tq.q, tq.ans, tq.wrong, tq.src));
+  return out;
+}
 function liveNav(lang, id) {
   const r = NAV_REAL[id], A = T_(r.from), B = T_(r.to), wa = wxOf(r.from), wb = wxOf(r.to);
   if (!wa || !wb) return [];
@@ -499,15 +587,8 @@ function liveNav(lang, id) {
     for (const [p, q, d] of legs) { if (m <= d) return [p[0] + (q[0] - p[0]) * m / d, p[1] + (q[1] - p[1]) * m / d]; m -= d; } return B.pos; };
   const pts = [[...A.pos, A.icao, 1], [...xPos, X], [...yPos, Y], [...B.pos, B.icao, 1]];
   // TAF de destination à l'heure d'arrivée estimée (avant le roulage)
-  const taf = TAF.find(x => x.icaoId === B.icao), eta = Math.round((t0 + (4 + t1 + tc + t3) * 60000) / 1000), ft = taf && tafAt(taf, eta);
-  if (ft) {
-    const O = en ? { vfr: 'No: VFR conditions forecast', durable: 'Yes, lasting (base forecast or BECMG/FM)', temporaire: 'Only temporarily or with a probability (TEMPO / PROB)', hors: 'The TAF does not cover your arrival time' }
-      : { vfr: 'Non : conditions VFR prévues', durable: 'Oui, de façon durable (prévision de base, BECMG ou FM)', temporaire: 'Seulement temporairement ou avec une probabilité (TEMPO / PROB)', hors: 'La TAF ne couvre pas votre heure d’arrivée' };
-    L.unshift({ st: '', wait: 0, ctx: en ? `Flight preparation. ${cB} TAF: ${taf.rawTAF}. Estimated arrival ${hm(4 + t1 + tc + t3)} UTC.`
-      : `Préparation du vol. TAF de ${cB} : ${taf.rawTAF}. Arrivée estimée à ${hm(4 + t1 + tc + t3)} UTC.`, atc: '', ans: O[ft], wrong: Object.values(O).filter(o => o !== O[ft]),
-      src: `TAF officielle ${B.icao} (aviationweather.gov) ; minima : ${SERA('SERA.5005 b)')} (visibilité 5 km, plafond 1500 ft)`,
-      q: en ? 'At your arrival time, does the TAF forecast conditions below the VFR minima of a control zone?' : 'À votre heure d’arrivée, la TAF prévoit-elle des conditions sous les minima VFR d’une zone de contrôle ?' });
-  }
+  const tq = tafQ(lang, B.icao, cB, t0 + (4 + t1 + tc + t3) * 60000);
+  if (tq) L.unshift({ st: '', wait: 0, atc: '', ...tq });
   let clock = 0;
   return L.map((c, i) => {
     clock += c.wait;
@@ -588,11 +669,13 @@ function next() {
   const listen = ($('#ecoute').checked || LEVELS[val('niv')].listen || cur.dictee) && cur.atc;
   const q = cur.q || (en ? 'Read back this instruction:' : 'Collationnez :');
   const badge = session ? `<span class="tag sess">${session.type === 'exam' ? '🎓 Examen blanc' : session.type === 'lecon' ? `🧭 ${esc(session.titre)}`
-    : session.type === 'cible' ? `🎯 ${esc(CONSEILS[session.kind]?.[0] || 'Entraînement ciblé')}` : `🏆 Défi du ${today()}`}</span>` : '';
+    : session.type === 'cible' ? `🎯 ${esc(CONSEILS[session.kind]?.[0] || 'Entraînement ciblé')}` : session.type === 'rare' ? '🧯 Situations rares'
+    : session.type === 'refresh' ? '🔁 Remise à niveau' : session.type === 'prepa' ? `✈️ Vol de demain : ${esc(terrain?.nom || '')}` : `🏆 Défi du ${today()}`}</span>` : '';
+  const tempoTag = $('#tempo').checked && cur.atc ? `<span class="tag" title="Débit progressif">🏃 débit × ${(1 / slowNow()).toFixed(2).replace('.', ',')}</span>` : '';
   let h = `<div class="radio"><span class="led" id="led"></span><span>COM1</span><strong>${esc(cur.st || '—')}</strong>
     <span class="prog">${session?.type === 'exam' ? '<span id="timer" class="me"></span>' : ''}<span class="me" title="Votre indicatif">✈ ${esc(series)}</span> ${idx} / ${pool.length}</span></div>
-    <div class="tags">${badge}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
-    ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? esc(wx.raw) : 'METAR indisponible : vent et QNH de l’exercice.'}
+    <div class="tags">${badge}${tempoTag}<span class="tag">${cur.regle === 'alpha' ? 'OACI' : cur.regle.toUpperCase()}</span>${cur.regle === 'alpha' ? '' : `<span class="tag">${en ? 'EN' : 'FR'}</span>`}${!session && isErr(cur) ? '<span class="tag err">À revoir</span>' : ''}</div>
+    ${terrain && cur.st?.startsWith(terrain.radio) ? `<p class="metar">📡 ${wx ? `${esc(wx.raw)}${wx.age >= 2 ? ` <span class="closed">⚠️ relevé d’il y a ${wx.age} h</span>` : ''}` : 'METAR indisponible : vent et QNH de l’exercice.'}
       <span class="muted">${esc(terrain.nom)} · ${esc(AIP_AD(terrain.icao))}${night ? ` · 🌙 nuit aéronautique (jour à ${nightChange(terrain.pos)} UTC)` : ''}${near ? ` · ✈ ${near} avion${near > 1 ? 's' : ''} en vol à moins de 30 NM (OpenSky)` : ''}</span>
       ${atsOpen(terrain) ? '' : `<span class="closed">🌙 Hors horaires ATS publiés (${esc(terrain.atsTxt)}) : ${terrain.aa ? `auto-information sur ${esc(terrain.aa)} (A/A, en français).` : 'en réalité, pas de contrôle à cette heure-ci.'}</span>`}</p>`
     : cur.metar ? `<p class="metar">📡 ${esc(cur.metar)}</p>` : ''}
@@ -733,8 +816,13 @@ const SLOW = { 1: 1.12, 2: 1, 3: 1, 4: 1 };
 let ttsWorker = null, ttsSeq = 0, saySrc = null, sayTok = 0;
 const audioCache = new Map(), ttsWait = new Map();
 let ttsProgress = () => {};
+// Débit progressif (option) : on part du débit posé d'un instructeur (durée × 1,25) ; chaque bonne réponse accélère, jusqu'à
+// un débit plus rapide que le naturel (durée × 0,85), celui d'une fréquence chargée ; une erreur ralentit de deux crans.
+// Règle d'entraînement du site, pas une norme officielle.
+let tempoK = 0;
+const slowNow = () => ($('#tempo').checked ? Math.max(0.85, 1.25 - 0.04 * tempoK) : SLOW[val('niv')]);
 function neuralAudio(text, voiceId) {
-  const slow = SLOW[val('niv')], k = `${voiceId}|${slow}|${text}`;
+  const slow = slowNow(), k = `${voiceId}|${slow}|${text}`;
   if (audioCache.size > 40) audioCache.delete(audioCache.keys().next().value); // ≈ 440 Ko par message de 5 s : on garde les 40 derniers
   if (!audioCache.has(k)) audioCache.set(k, new Promise((resolve, reject) => {
     if (!ttsWorker) {
@@ -867,7 +955,7 @@ function sysSay(l, L, tx, rx) {
   const u = new SpeechSynthesisUtterance(speakable(l.text, l.lang));
   u.lang = v?.lang || (l.lang === 'en' ? 'en-GB' : 'fr-FR');
   if (v) u.voice = v;
-  u.rate = L.rate;
+  u.rate = $('#tempo').checked ? 1 / slowNow() : L.rate;
   u.pitch = 0.9 + (hash(l.pilot ? l.cs : l.st || '') % 3) * 0.08;
   u.onend = u.onerror = rx;
   tx();
@@ -995,6 +1083,14 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     if (!good && !cur.pilote) for (const k of classify(notes, said)) (extra.tally ||= {})[k] = (extra.tally[k] || 0) + 1; // pour le bilan
     const icao = cur.icao || terrain?.icao; // réussite par terrain réel
     if (icao) { const t = ((extra.terr ||= {})[icao] ||= [0, 0]); t[good ? 0 : 1]++; }
+    // réussite par élément (écrit, oral) : chaque élément présent dans le collationnement attendu, oublié ou faux ?
+    if (cur.atc && !cur.q && !cur.elements && !cur.notMine && !nm && !cur.pilote && !cur.dictee && modeNow() !== 'qcm') {
+      const bad = good ? [] : classify(notes, said);
+      for (const k of elemsOf(cur.answers[0])) { const e = ((extra.elem ||= {})[k] ||= [0, 0]); e[0]++; if (bad.includes(k)) e[1]++; }
+    }
+    extra.last = Date.now();
+    tempoK = good ? tempoK + 1 : Math.max(0, tempoK - 2);
+    if (!session && $('#adapt').checked) adaptMsg = adaptLevel(good) || adaptMsg;
     runLog.push({ q: pool[idx - 1], good, late });
     save();
   }
@@ -1021,11 +1117,13 @@ function feedback(good, { said = '', diff, notes = [], ans = cur.answers[0], nm 
     ${notes.length ? `<ul class="notes">${notes.slice(0, 6).map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
     ${said ? `<p>${cur.pilote ? 'Le pilote a dit' : 'Votre réponse'} : <span class="said">${diff ? paint(diff.U, 'extra') : esc(said)}</span></p>` : ''}
     ${cur.notMine ? '' : `<p>${cur.pilote ? 'Collationnement attendu' : 'Réponse attendue'} : <strong>${diff ? paint(diff.E, 'miss') : esc(ans)}</strong></p>`}
+    ${adaptMsg ? `<p class="adapt">${esc(adaptMsg)}</p>` : ''}
     <p class="src">📘 Source : ${esc(cur.notMine ? `${MANUEL(24)} (confusion d’indicatifs)` : cur.src)}</p>
     <details class="why"><summary>❓ Pourquoi ?</summary><ul>${why.regles.map(r => `<li>${esc(r.texte)} <span class="src">(${esc(r.src)})</span></li>`).join('')}</ul>
       ${fiche ? `<button class="ghost" data-fiche="${fiche.id}">📚 Fiche : ${esc(fiche.titre)}</button>` : ''}</details>
     <div class="row">
     <button class="primary" id="nx">Suivant →</button></div></div>`;
+  adaptMsg = '';
   if (cur.cut || cur.blocked) pool.splice(idx, 0, cur.full); // le contrôleur répète : on collationne le message complet
   showMyVoice();
   $('#fb [data-fiche]')?.addEventListener('click', e => openFiche(e.target.dataset.fiche));
@@ -1093,6 +1191,11 @@ function end() {
       $('#again').insertAdjacentHTML('afterend', '<button id="redo">🔁 Refaire les messages ratés</button>');
       $('#redo').addEventListener('click', () => { pool = missed.map(x => ({ ...x.q, retry: false, heardAt: null, startAt: null })); idx = ok = total = streak = 0; runLog = []; stats(); next(); });
     });
+  } else if (/rare|refresh|prepa/.test(session?.type || '')) {
+    title = { rare: 'SITUATIONS RARES', refresh: 'REMISE À NIVEAU', prepa: 'VOL DE DEMAIN' }[session.type];
+    const ko = session.log.filter(x => !x.good);
+    body = `<p class="ctx">${ok} / ${total} (${pct} %).</p>${ko.length ? `<ol class="review">${ko.map(x => `<li><strong>${esc(x.q.q || x.q.atc)}</strong><br>
+      Attendu : <strong>${esc(x.q.answers[0])}</strong><br><span class="src">📘 ${esc(x.q.src)}</span></li>`).join('')}</ol>` : '<p class="ctx">Aucune erreur. Bravo !</p>'}`;
   } else if (session?.type === 'cible') {
     title = 'ENTRAÎNEMENT CIBLÉ';
     body = `<p class="ctx">🎯 ${esc(CONSEILS[session.kind]?.[0] || '')} : ${ok} / ${total} (${pct} %).</p>`;
@@ -1168,6 +1271,21 @@ $('#examBtn').addEventListener('click', () => {
   if (confirm(`Examen blanc : ${EXAM_N} questions en QCM, ${EXAM_MIN} minutes, réussite à ${EXAM_OK} %, correction à la fin. Commencer ?`)) start({ type: 'exam' });
 });
 $('#defiBtn').addEventListener('click', () => start({ type: 'defi' }));
+$('#rareBtn').addEventListener('click', () => start({ type: 'rare' }));
+$('#refreshBtn').addEventListener('click', () => start({ type: 'refresh' }));
+// vol de demain : terrain, date et heure d'arrivée (UTC) ; METAR du moment pour la piste, TAF officielle pour l'heure prévue
+$('#prepaT').insertAdjacentHTML('beforeend', TERRAINS.map(t => `<option value="${t.icao}">${t.nom} (${t.icao})</option>`).join(''));
+$('#prepaBtn').addEventListener('click', () => {
+  if ($('#terrain').value) $('#prepaT').value = $('#terrain').value;
+  $('#prepaD').value = new Date(Date.now() + DAY).toISOString().slice(0, 10);
+  $('#prepa').showModal();
+});
+$('#prepaGo').addEventListener('click', () => {
+  const icao = $('#prepaT').value, at = Date.parse(`${$('#prepaD').value}T${$('#prepaH').value || '10:00'}:00Z`);
+  $('#prepa').close(); $('#terrain').value = icao;
+  if (!wxOf(icao)) return alert('METAR de ce terrain indisponible pour le moment : réessayez plus tard.');
+  start({ type: 'prepa', icao, at: isNaN(at) ? Date.now() + DAY : at });
+});
 $('#fichesBtn').addEventListener('click', () => openFiche());
 $('#glossBtn').addEventListener('click', () => { carte = null; showGlossaire(); $('#glossaire').showModal(); });
 $('#glossQ').addEventListener('input', () => { carte = null; showGlossaire(); });
@@ -1181,3 +1299,9 @@ $('#reset').addEventListener('click', () => {
 QUESTIONS.forEach(q => { q.id = hash([q.lang, q.regle, q.atc, q.q, q.ctx, ...(q.nav ? [q.nav] : [])].join('|')).toString(36); });
 errCount();
 start();
+{ const gap = extra.last ? Math.floor((Date.now() - extra.last) / DAY) : 0;
+  if (gap >= 21) { // remise à niveau proposée après 3 semaines sans s'entraîner (règle du site)
+    $('#card').insertAdjacentHTML('beforebegin', `<p class="comeback" id="comeback">👋 Dernier entraînement il y a ${gap} jours.
+      <button class="primary" id="comebackGo">🔁 Remise à niveau (10 min)</button></p>`);
+    $('#comebackGo').addEventListener('click', () => { $('#comeback').remove(); start({ type: 'refresh' }); });
+  } }

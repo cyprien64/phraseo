@@ -321,3 +321,70 @@ QUESTIONS.push(
     q: 'Qu’interdit la carte VAC de Tarbes de nuit (sauf pilotes et organismes cités) ?', answers: ['L’atterrissage piste 02 et le décollage piste 20'],
     wrong: ['Tout atterrissage', 'Le décollage piste 02 et l’atterrissage piste 20', 'Le tour de piste main gauche'], src: VAC_TXT('LFBT', 'TXT 01') },
 );
+
+// Imprévus en vol (manuel DSNA, mot pour mot) : attente à vue (p. 148), 360 de retardement (p. 132),
+// nouvelle destination (p. 84). Les remises de gaz existantes (p. 159) sont ajoutées à ce sujet dans app.js.
+// Le manuel ne donne pas d'expression pour un changement de piste en service : pas d'exercice.
+SUJETS.imprevu = 'Imprévus en vol (attente, 360, remise de gaz, nouvelle destination)';
+QUESTIONS.push(
+  { cat: 'imprevu', lang: 'fr', regle: 'vfr', st: 'Tour 118,700', ctx: 'Vous arrivez au point E pour entrer dans le circuit ; le circuit est chargé.',
+    atc: 'F-GBCD, attendez à vue 5 minutes verticale E.', answers: ['J’attends verticale E, F-GBCD', "J'attends verticale E, F-GBCD"],
+    wrong: ['Roger, F-GBCD', 'J’attends, F-GBCD', 'J’entre vent arrière, F-GBCD'], src: MANUEL(148) },
+  { cat: 'imprevu', lang: 'en', regle: 'vfr', st: 'Tower 118.700', ctx: 'You reach point E to join the circuit; the circuit is busy.',
+    atc: 'F-GBCD, hold visual 5 minutes over E.', answers: ['Holding over E, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Holding, F-GBCD', 'Joining downwind, F-GBCD'], src: MANUEL(148) },
+  { cat: 'imprevu', lang: 'fr', regle: 'vfr', st: 'Tour 118,700', ctx: 'Le contrôleur doit retarder votre arrivée.',
+    atc: 'F-GBCD, faites un 360 à gauche, pour retardement.', answers: ['Je fais un 360 à gauche, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Je fais un 360 à droite, F-GBCD', 'Je fais un 360, F-GBCD'], src: MANUEL(132) },
+  { cat: 'imprevu', lang: 'en', regle: 'vfr', st: 'Tower 118.700', ctx: 'The controller needs to delay your arrival.',
+    atc: 'F-GBCD, make a 360 by the left, for delaying action.', answers: ['Making a 360 by the left, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Making a 360 by the right, F-GBCD', 'Making a 360, F-GBCD'], src: MANUEL(132) },
+  { cat: 'imprevu', niv: 2, lang: 'fr', regle: 'ifr', st: 'Bordeaux Contrôle 127,250', ctx: 'Vous avez demandé une nouvelle destination : Saint-Nazaire (LFRZ).',
+    atc: 'F-GBCD, nouvelle destination Saint-Nazaire, tournez à gauche direct CGC, puis NTS, M T.', answers: ['Je tourne à gauche direct CGC, puis NTS, M T, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Je tourne à droite direct CGC, puis NTS, M T, F-GBCD', 'Nouvelle destination Saint-Nazaire, F-GBCD'], src: MANUEL(84) },
+  { cat: 'imprevu', niv: 2, lang: 'en', regle: 'ifr', st: 'Bordeaux Control 127.250', ctx: 'You requested a new destination: Saint-Nazaire (LFRZ).',
+    atc: 'F-GBCD, new destination Saint-Nazaire, turn left direct CGC, then NTS, M T.', answers: ['Turning left direct CGC, then NTS, M T, F-GBCD'],
+    wrong: ['Roger, F-GBCD', 'Turning right direct CGC, then NTS, M T, F-GBCD', 'New destination Saint-Nazaire, F-GBCD'], src: MANUEL(84) },
+);
+
+// Interception d'un aéronef civil : SERA.11015 (conduite à tenir), tableaux S11-1 et S11-2 (signaux visuels),
+// tableau S11-3 (expressions quand il n'y a pas de langue commune, chacune transmise deux fois : SERA.11015 e)).
+SUJETS.intercept = 'Interception par un aéronef militaire (SERA.11015)';
+const ICPT = (ctx, q, ans, wrong, ref) => ({ cat: 'intercept', lang: 'fr', regle: 'vfr', qcmOnly: true, atc: '', ctx, q, answers: [ans], wrong, src: SERA(`SERA.11015${ref}`) });
+const NOLANG = 'Contact radio établi avec l’intercepteur, mais vous n’avez pas de langue commune.';
+QUESTIONS.push(
+  ICPT('Un avion militaire se place légèrement au-dessus et en avant, à votre gauche, balance l’appareil et fait clignoter ses feux de navigation, puis vire lentement à gauche.',
+    'Que signifie ce signal et que faites-vous ?', 'Vous avez été intercepté, suivez-moi : je balance l’appareil, fais clignoter mes feux de navigation et je le suis',
+    ['Vous pouvez continuer : je poursuis ma route', 'Atterrissez sur cet aérodrome : je sors le train et j’atterris', 'En détresse : j’affiche 7700 et je continue'], ', tableau S11-1, série 1'),
+  ICPT('L’intercepteur exécute un brusque virage en montée de 90° ou plus, sans couper votre ligne de vol.',
+    'Que signifie ce signal et que faites-vous ?', 'Vous pouvez continuer : je balance l’appareil',
+    ['Suivez-moi : je le suis', 'Atterrissez sur cet aérodrome : je descends', 'Il m’est impossible d’obéir : j’allume et éteins mes feux'], ', tableau S11-1, série 2'),
+  ICPT('L’intercepteur sort son train, allume ses phares d’atterrissage fixes et survole la piste en service.',
+    'Que signifie ce signal et que faites-vous ?', 'Atterrissez sur cet aérodrome : je sors le train, allume mes phares, le suis et atterris si c’est possible en sécurité',
+    ['Vous pouvez continuer : je balance l’appareil', 'Suivez-moi vers un autre aérodrome : je le suis', 'Survolez l’aérodrome : je fais des circuits'], ', tableau S11-1, série 3'),
+  ICPT('L’intercepteur vous demande d’atterrir, mais la piste ne convient pas à votre avion.',
+    'Quel signal faites-vous ?', 'Je rentre le train si j’en ai un et fais clignoter mes phares en passant au-dessus de la piste entre 1000 et 2000 ft, puis je continue des circuits',
+    ['Je fais clignoter de façon irrégulière tous mes feux', 'Je balance l’appareil et je pars', 'Je fais un 360 et j’affiche 7600'], ', tableau S11-2, série 4'),
+  ICPT('Vous venez d’être intercepté.', 'Sur quelle fréquence essayez-vous d’appeler l’intercepteur ?',
+    '121,5 MHz, puis 243 MHz si le contact n’est pas établi et si c’est possible',
+    ['La fréquence de la Tour la plus proche', '123,5 MHz', '118,0 MHz'], ' b) 3)'),
+  ICPT('Vous venez d’être intercepté.', 'Que dites-vous dans votre appel général ?', 'L’identité de l’aéronef intercepté et la nature du vol',
+    ['Seulement « MAYDAY »', 'Ma position et mon altitude, sans indicatif', 'Rien : j’attends que l’intercepteur m’appelle'], ' b) 3)'),
+  ICPT('Vous venez d’être intercepté ; votre avion a un transpondeur.', 'Quel code affichez-vous ?', '7700, sauf instruction contraire de l’organisme ATS compétent',
+    ['7600', '7500', '7000'], ' b) 4)'),
+  ICPT('Vous venez d’être intercepté.', 'Qui prévenez-vous en plus, si c’est possible ?', 'L’organisme des services de la circulation aérienne compétent',
+    ['Personne : seul l’intercepteur compte', 'Votre aéroclub par téléphone', 'Les autres avions sur la fréquence A/A'], ' b) 2)'),
+  ICPT('Pendant l’interception, la Tour vous donne par radio une instruction contraire aux signaux visuels de l’intercepteur.', 'Que faites-vous ?',
+    'Je demande immédiatement des éclaircissements et continue de suivre les instructions visuelles de l’intercepteur',
+    ['Je suis l’instruction de la Tour', 'Je choisis l’instruction la plus sûre', 'J’affiche 7600 et je continue ma route'], ' c)'),
+  ICPT(NOLANG, 'Combien de fois transmettez-vous chaque expression ?', 'Deux fois', ['Une fois', 'Trois fois', 'Jusqu’à ce que l’intercepteur réponde'], ' e)'),
+  ICPT(`${NOLANG} Il dit « FOLLOW ».`, 'Que signifie « FOLLOW » ?', 'Suivez-moi', ['Vous pouvez poursuivre votre route', 'Descendez pour atterrir', 'Quel est votre indicatif d’appel ?'], ', tableau S11-3'),
+  ICPT(`${NOLANG} Il dit « DESCEND ».`, 'Que signifie « DESCEND » dit par l’intercepteur ?', 'Descendez pour atterrir', ['Je demande à descendre', 'Suivez-moi', 'Atterrissez à cet aérodrome'], ', tableau S11-3'),
+  ICPT(`${NOLANG} Il dit « YOU LAND ».`, 'Que signifie « YOU LAND » ?', 'Atterrissez à cet aérodrome', ['Je demande à atterrir', 'Descendez pour atterrir', 'Vous pouvez poursuivre votre route'], ', tableau S11-3'),
+  ICPT(`${NOLANG} Il dit « PROCEED ».`, 'Que signifie « PROCEED » ?', 'Vous pouvez poursuivre votre route', ['Suivez-moi', 'Répétez vos instructions', 'Atterrissez à cet aérodrome'], ', tableau S11-3'),
+  ICPT(`${NOLANG} Il dit « CALL SIGN ».`, 'Que répondez-vous ?', 'CALL SIGN F-GBCD, CALL SIGN F-GBCD', ['F-GBCD, F-GBCD', 'WILCO, WILCO', 'REPEAT, REPEAT'], ' e), tableau S11-3'),
+  ICPT(`${NOLANG} Vous avez compris son instruction et vous allez l’exécuter.`, 'Que répondez-vous ?', 'WILCO, WILCO', ['ROGER, ROGER', 'AFFIRM, AFFIRM', 'PROCEED, PROCEED'], ' e), tableau S11-3'),
+  ICPT(`${NOLANG} Vous êtes incapable d’exécuter son instruction.`, 'Que répondez-vous ?', 'CAN NOT, CAN NOT', ['NEGATIVE, NEGATIVE', 'REPEAT, REPEAT', 'AM LOST, AM LOST'], ' e), tableau S11-3'),
+  ICPT(`${NOLANG} Vous ne connaissez pas votre position.`, 'Que dites-vous ?', 'AM LOST, AM LOST', ['CAN NOT, CAN NOT', 'MAYDAY, MAYDAY', 'REPEAT, REPEAT'], ' e), tableau S11-3'),
+  ICPT(`${NOLANG} Vous voulez atterrir à Pau.`, 'Que dites-vous ?', 'LAND Pau, LAND Pau', ['YOU LAND Pau, YOU LAND Pau', 'DESCEND Pau, DESCEND Pau', 'PROCEED Pau, PROCEED Pau'], ' e), tableau S11-3'),
+);

@@ -137,7 +137,7 @@ function realTerrain(q, t, wx, letter, rwy, pick = 0, from = 'N') {
   const [entree, alt] = q.dest ? [] : entryPoint(t, rwy, from);
   const arrivee = /\b(?:point|estimé|estimate) E\b/.test(`${q.ctx} ${q.answers[0]}`);
   const vac = s => {
-    if (entree) s = s.replace(/\b(point|estimé|estimate|rappelez|report|rappelle|Reporting|passe|passing) E\b(?! N)/g, `$1 ${entree}`);
+    if (entree) s = s.replace(/\b(point|estimé|estimate|rappelez|report|rappelle|Reporting|passe|passing|verticale|over) E\b(?! N)/g, `$1 ${entree}`);
     if (alt && arrivee) s = s.replace(/\b1500 (pieds|feet)\b/g, `${alt} $1`);
     return s;
   };

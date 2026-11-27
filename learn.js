@@ -17,7 +17,7 @@ function leitner(p, good, now = Date.now()) {
 const isDueP = (p, now = Date.now()) => !!p && (p[4] || 0) <= now; // anciennes progressions sans échéance : à revoir
 
 // « Pourquoi ? » : règles qui s'appliquent à l'exercice, avec leur source. `fiche` = fiche de cours liée.
-const FICHE_CAT = { urgence: 'urgence', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre', afis: 'afis', phases: 'collat', nav: 'collat' };
+const FICHE_CAT = { urgence: 'urgence', intercept: 'urgence', imprevu: 'collat', trafic: 'trafic', signaux: 'signaux', expr: 'repet', appel: 'essai', atis: 'nombres', transit: 'collat', sol: 'collat', ifr: 'ordre', afis: 'afis', phases: 'collat', nav: 'collat' };
 function whyRules(q) {
   const out = [], txt = `${q.atc} ${q.answers[0]}`, add = (texte, src) => out.push({ texte, src });
   if (q.cat === 'afis') { // l'AFIS informe, il ne délivre pas de clairance
@@ -88,6 +88,8 @@ function bilan(tally = {}, answered = 0, min = 50) {
 // Entraînement ciblé : collationnements qui contiennent l'élément souvent raté (tous les collationnements sinon).
 const CIBLES = { qnh: /QNH/, piste: /piste|runway/i, transpondeur: /transpondeur|squawk/i, niveau: /niveau|level|pieds|feet/i,
   cap: /\bcap \d|heading/i, sens: /gauche|droite|left|right/i };
+// Éléments d'un collationnement attendu (pour la réussite par élément) : l'indicatif toujours, puis ceux que la réponse contient.
+const elemsOf = ans => ['indicatif', ...Object.keys(CIBLES).filter(k => CIBLES[k].test(ans))];
 function cible(questions, kind) {
   const re = CIBLES[kind];
   return questions.filter(q => q.atc && !q.q && q.regle !== 'alpha' && (!re || re.test(`${q.atc} ${q.answers[0]}`)));
@@ -140,6 +142,8 @@ const PARCOURS = [
   ['IFR avancé', q => q.cat === 'ifr'],
   ['Phases particulières', q => q.cat === 'phases'],
   ['Urgences et pannes', q => q.cat === 'urgence'],
+  ['Imprévus en vol', q => q.cat === 'imprevu'],
+  ['Interception', q => q.cat === 'intercept'],
 ];
 function parcours(questions, prog) {
   let open = true;
@@ -151,4 +155,4 @@ function parcours(questions, prog) {
   }).filter(l => l.qs.length);
 }
 
-if (typeof module !== 'undefined') module.exports = { leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, cible, parcours, BOX_DAYS, DAY };
+if (typeof module !== 'undefined') module.exports = { elemsOf, leitner, isDueP, whyRules, classify, bilan, dailyPick, badges, cible, parcours, BOX_DAYS, DAY };

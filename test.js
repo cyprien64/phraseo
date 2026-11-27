@@ -292,3 +292,18 @@ console.log('ATIS station automatique OK');
   const fs = require('fs'), sw = fs.readFileSync(__dirname + '/sw.js', 'utf8');
   for (const f of sw.match(/CORE = \[([^\]]+)\]/)[1].match(/'([^']+)'/g).map(x => x.slice(1, -1))) if (f !== './') assert(fs.existsSync(__dirname + '/' + f), 'hors ligne : ' + f);
   console.log('TAF, provenance, hors ligne OK'); }
+
+// ── Lot 7 : progression et maintien des compétences ──
+{ assert.deepStrictEqual(L.elemsOf('Piste 24, je décolle, F-GBCD'), ['indicatif', 'piste']);
+  assert.deepStrictEqual(L.elemsOf('QNH 1013, transpondeur 7021, F-GBCD'), ['indicatif', 'qnh', 'transpondeur']);
+  const ic = QUESTIONS.filter(q => q.cat === 'intercept');
+  assert(ic.length >= 15 && ic.every(q => /SERA\.11015/.test(q.src) && q.qcmOnly && !q.wrong.includes(q.answers[0])));
+  assert(ic.some(q => /121,5 MHz/.test(q.answers[0])) && ic.some(q => /^7700/.test(q.answers[0])));
+  const im = QUESTIONS.filter(q => q.cat === 'imprevu');
+  assert(im.length === 6 && im.every(q => /Manuel/.test(q.src)));
+  const hold = im.find(q => q.lang === 'fr' && /attendez à vue/.test(q.atc));
+  const h = R.realTerrain(hold, TERRAINS.find(t => t.icao === 'LFBD'), null, null, '23', 0, 'S');
+  assert(/verticale S\./.test(h.atc) && /verticale S,/.test(h.answers[0]), h.atc);
+  const titres = L.parcours(QUESTIONS, {}).map(l => l.titre);
+  assert(titres.includes('Imprévus en vol') && titres.includes('Interception'));
+  console.log('niveau, éléments, imprévus, interception OK'); }
